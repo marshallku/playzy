@@ -2,15 +2,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/catalog/catalog_api.dart';
+import '../data/catalog/http_catalog_api.dart';
 import '../data/payment/fake_payment_gateway.dart';
 import '../data/payment/payment_gateway.dart';
 import '../data/profile/profile_repository.dart';
 import '../data/story/fake_story_api.dart';
+import '../data/story/http_story_api.dart';
 import '../data/story/story_api.dart';
 import '../domain/child_profile.dart';
 import '../domain/story.dart';
 import '../sdui/sdui_models.dart';
 import 'constants.dart';
+import 'env.dart';
 
 /// Composition root. Providers wire concrete implementations; tests override
 /// them with fakes (ADR 0004). Swapping the AI backend or payment provider is a
@@ -25,8 +28,10 @@ final profileRepositoryProvider = Provider<ProfileRepository>(
   (ref) => PrefsProfileRepository(ref.watch(sharedPreferencesProvider)),
 );
 
-// M1 uses fakes; M2 swaps [storyApiProvider] to an HttpStoryApi (ADR 0001).
-final storyApiProvider = Provider<StoryApi>((ref) => const FakeStoryApi());
+// Real backend when configured (--dart-define=PLAYZY_API_BASE_URL), else the
+// fake so the app runs with no server (ADR 0001).
+final storyApiProvider = Provider<StoryApi>((ref) =>
+    Env.hasBackend ? HttpStoryApi(baseUrl: Env.apiBaseUrl) : const FakeStoryApi());
 
 final paymentGatewayProvider = Provider<PaymentGateway>((ref) {
   final gateway = FakePaymentGateway();
@@ -34,8 +39,8 @@ final paymentGatewayProvider = Provider<PaymentGateway>((ref) {
   return gateway;
 });
 
-// M2a uses the fake catalog; a real backend swaps this for an HttpCatalogApi.
-final catalogApiProvider = Provider<CatalogApi>((ref) => const FakeCatalogApi());
+final catalogApiProvider = Provider<CatalogApi>((ref) =>
+    Env.hasBackend ? HttpCatalogApi(baseUrl: Env.apiBaseUrl) : const FakeCatalogApi());
 
 /// The situation-picker SDUI document. Falls back to the bundled default if the
 /// fetch fails, the schema is newer than supported, OR the document has no
