@@ -7,11 +7,13 @@ import '../../core/providers.dart';
 import '../../core/router.dart';
 import '../../design/theme.dart';
 import '../../design/widgets/primary_button.dart';
-import '../../domain/situation.dart';
 import '../../domain/story.dart';
+import '../../sdui/sdui_models.dart';
+import '../../sdui/sdui_renderer.dart';
 
-/// Pick tonight's situations. M1 renders the bundled default catalog natively;
-/// M2 swaps this body for the SDUI renderer fed by the backend (ADR 0003).
+/// Pick tonight's situations. The catalog is rendered from a Server-Driven UI
+/// document (ADR 0003) so it can grow without an app release; the provider
+/// falls back to a bundled default offline.
 class SituationPickerScreen extends ConsumerStatefulWidget {
   const SituationPickerScreen({super.key});
 
@@ -22,12 +24,12 @@ class SituationPickerScreen extends ConsumerStatefulWidget {
 class _SituationPickerScreenState extends ConsumerState<SituationPickerScreen> {
   final Set<String> _selected = {};
 
-  void _toggle(Situation s) {
+  void _toggle(SduiChip chip) {
     setState(() {
-      if (_selected.contains(s.id)) {
-        _selected.remove(s.id);
+      if (_selected.contains(chip.id)) {
+        _selected.remove(chip.id);
       } else if (_selected.length < AppConstants.maxSituationsPerStory) {
-        _selected.add(s.id);
+        _selected.add(chip.id);
       }
     });
   }
@@ -55,8 +57,7 @@ class _SituationPickerScreenState extends ConsumerState<SituationPickerScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final parenting = kDefaultSituations.where((s) => s.kind == SituationKind.parenting);
-    final themes = kDefaultSituations.where((s) => s.kind == SituationKind.theme);
+    final catalog = ref.watch(situationCatalogProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('오늘의 이야기')),
@@ -64,15 +65,23 @@ class _SituationPickerScreenState extends ConsumerState<SituationPickerScreen> {
         child: Column(
           children: [
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(AppSpacing.screenEdge),
-                children: [
-                  const _SectionTitle('요즘 이런 상황이 있나요?'),
-                  _Chips(situations: parenting, selected: _selected, onToggle: _toggle),
-                  const SizedBox(height: AppSpacing.xxl),
-                  const _SectionTitle('어떤 모험을 떠날까요?'),
-                  _Chips(situations: themes, selected: _selected, onToggle: _toggle),
-                ],
+              child: catalog.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                // The provider already falls back to the bundled catalog, so an
+                // error here is unexpected; show it rather than a blank screen.
+                error: (e, _) => Center(
+                  child: Text('목록을 불러오지 못했어요',
+                      style: AppTypography.body.copyWith(color: colors.error)),
+                ),
+                data: (document) => SingleChildScrollView(
+                  padding: const EdgeInsets.all(AppSpacing.screenEdge),
+                  child: SduiRenderer(
+                    document: document,
+                    selected: _selected,
+                    onToggleChip: _toggle,
+                    canSelectMore: _selected.length < AppConstants.maxSituationsPerStory,
+                  ),
+                ),
               ),
             ),
             Padding(
@@ -95,43 +104,6 @@ class _SituationPickerScreenState extends ConsumerState<SituationPickerScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: Text(text, style: AppTypography.h2.copyWith(color: context.colors.textPrimary)),
-    );
-  }
-}
-
-class _Chips extends StatelessWidget {
-  const _Chips({required this.situations, required this.selected, required this.onToggle});
-
-  final Iterable<Situation> situations;
-  final Set<String> selected;
-  final void Function(Situation) onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.sm,
-      children: [
-        for (final s in situations)
-          FilterChip(
-            label: Text('${s.emoji ?? ''} ${s.label}'.trim()),
-            selected: selected.contains(s.id),
-            onSelected: (_) => onToggle(s),
-          ),
-      ],
     );
   }
 }

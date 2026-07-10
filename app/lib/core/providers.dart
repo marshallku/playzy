@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/catalog/catalog_api.dart';
 import '../data/payment/fake_payment_gateway.dart';
 import '../data/payment/payment_gateway.dart';
 import '../data/profile/profile_repository.dart';
@@ -8,6 +9,7 @@ import '../data/story/fake_story_api.dart';
 import '../data/story/story_api.dart';
 import '../domain/child_profile.dart';
 import '../domain/story.dart';
+import '../sdui/sdui_models.dart';
 import 'constants.dart';
 
 /// Composition root. Providers wire concrete implementations; tests override
@@ -31,6 +33,27 @@ final paymentGatewayProvider = Provider<PaymentGateway>((ref) {
   ref.onDispose(gateway.dispose);
   return gateway;
 });
+
+// M2a uses the fake catalog; a real backend swaps this for an HttpCatalogApi.
+final catalogApiProvider = Provider<CatalogApi>((ref) => const FakeCatalogApi());
+
+/// The situation-picker SDUI document. Falls back to the bundled default if the
+/// fetch fails, the schema is newer than supported, OR the document has no
+/// usable chips — so the picker is never empty (ADR 0003).
+final situationCatalogProvider = FutureProvider<SduiDocument>((ref) async {
+  try {
+    final doc = await ref.watch(catalogApiProvider).fetchSituationCatalog();
+    if (doc.schemaVersion > SduiDocument.supportedVersion || !_hasUsableChips(doc)) {
+      return bundledSituationCatalog();
+    }
+    return doc;
+  } catch (_) {
+    return bundledSituationCatalog();
+  }
+});
+
+bool _hasUsableChips(SduiDocument doc) =>
+    doc.components.whereType<SduiChipGroup>().any((g) => g.chips.isNotEmpty);
 
 /// The child profile (null until set up). Loads on build; [save] persists.
 class ProfileController extends AsyncNotifier<ChildProfile?> {
