@@ -27,13 +27,15 @@ Exit: the entire experience is demoable and tested offline.
 
 ## M2 — Real AI backend
 
-- [ ] Playzy backend (AI gateway) with `KagiProvider` (wraps `kagi serve`)
-- [ ] `HttpStoryApi` in the app targets the stable contract
-- [ ] Prompt engineering + age-band guardrails; structured story output
-- [ ] Server-side generation quota (free-tier enforcement)
-- [ ] SDUI catalog served from backend
+- [x] Playzy backend (AI gateway) wrapping `kagi serve` (`backend/`, Go)
+- [x] `HttpStoryApi` + `HttpCatalogApi` in the app target the stable contract
+- [x] Prompt engineering + age-band guardrails; structured story output
+- [x] SDUI catalog served from backend
+- [ ] Server-side generation quota (free-tier enforcement) — app gating is a
+      stand-in until this lands
+- [ ] End-to-end run verified with real Kagi credentials (needs user creds)
 
-Exit: real personalized stories end-to-end on a dev backend.
+Exit: real personalized stories end-to-end on a dev backend (pending creds).
 
 ## M3 — Monetization (gated on D1)
 

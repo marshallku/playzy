@@ -1,0 +1,61 @@
+# Playzy backend
+
+The AI gateway between the Flutter app and the AI provider (ADR 0001). The app
+speaks a stable, provider-agnostic contract; this service owns the prompt and
+the provider. Today it is the thinnest viable adapter: it proxies to a local
+[`kagi serve`](../../kagi) and shapes the result into a `Story`.
+
+## Contract (what the app depends on)
+
+- `POST /v1/stories` — body `StoryRequest` (`childName`, `ageBand`,
+  `situationIds`, `interests?`, `companionName?`) → `Story` (`id`, `title`,
+  `pages[]`, `createdAt`).
+- `GET /v1/catalog/situations` — the SDUI document for the situation picker
+  (ADR 0003), matching the app's bundled default.
+- `GET /healthz` — `ok`.
+
+## Run (local dev)
+
+```bash
+# 1) Start kagi's HTTP server (handles Kagi auth/keyring — see ../../kagi).
+#    Needs your Kagi credentials (KAGI_EMAIL/KAGI_PASSWORD or KAGI_SESSION).
+kagi serve -addr 127.0.0.1:8921 &
+
+# 2) Start the Playzy backend (defaults shown).
+KAGI_SERVE_URL=http://127.0.0.1:8921 PLAYZY_ADDR=:8080 go run .
+
+# 3) Point the app at it.
+cd ../app
+flutter run --dart-define=PLAYZY_API_BASE_URL=http://localhost:8080
+```
+
+With no `PLAYZY_API_BASE_URL`, the app runs entirely on fakes (no backend
+needed) — see `app/lib/core/env.dart`.
+
+## Config
+
+| Env | Default | Meaning |
+| --- | --- | --- |
+| `PLAYZY_ADDR` | `:8080` | Listen address |
+| `KAGI_SERVE_URL` | `http://127.0.0.1:8921` | Where `kagi serve` is listening |
+
+## Swapping the AI provider
+
+kagi is a **reverse-engineered, unofficial** client and is dev-only (ADR 0001).
+To move to OpenAI/Anthropic/etc., change **only** `callAI` in `main.go` — the
+prompt builder, parser, contract, and the entire app stay untouched.
+
+## Test
+
+```bash
+go test ./...   # prompt/parse/catalog + handler tests (mock kagi, no creds)
+```
+
+## Notes / follow-ups
+
+- Free-tier quota + entitlements must be enforced **here** in production (ADR
+  0002), not just mirrored in the app. Not yet implemented — the app's local
+  gating is a stand-in.
+- Content-safety: guardrails live in the prompt (`prompt.go`); a real launch
+  should add an output moderation pass before returning a story to a child.
+- Hosting is undecided (D5); kagi is a local dev dependency only.
