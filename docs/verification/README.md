@@ -14,8 +14,30 @@ compiles.
 | Backend vet/format | `go vet` / `gofmt` | clean |
 | **Real web build** | `flutter build web --release` | ✓ Built `build/web` |
 
-The iOS build itself needs macOS + Xcode (ADR 0005) and is deferred; everything
-above is what can be built/run in this environment.
+## iOS — actually built and run in the simulator
+
+The native toolchain hang (ADR 0005) was resolved (ad-hoc re-sign of the Flutter
+cache), so iOS was built and run for real:
+
+| Check | How | Result |
+| --- | --- | --- |
+| iOS **build** | `flutter build ios --simulator` | ✓ Built `Runner.app` (Xcode 26.6) |
+| Run in **simulator** | `simctl install/launch` on iPhone 17 (iOS 26.5) | app runs — [ios/ios-01-home.png](ios/ios-01-home.png) |
+| iOS **e2e journey** | `flutter test integration_test/app_journey_test.dart -d <sim>` | **All tests passed** — full flow incl. night-mode reader, on the real simulator |
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # no sudo
+xcrun simctl boot "iPhone 17"
+flutter build ios --simulator --debug
+xcrun simctl install booted build/ios/iphonesimulator/Runner.app
+xcrun simctl launch booted im.toss.playzy
+xcrun simctl io booted screenshot ios/ios-01-home.png
+flutter test integration_test/app_journey_test.dart -d "iPhone 17"
+```
+
+The `integration_test` version of the journey adds device-robust scrolling
+(`scrollUntilVisible`) so it drives the flow on a real tall device, not just the
+default test window.
 
 ## Manual e2e — the app actually running, captured
 

@@ -1,7 +1,33 @@
 # ADR 0005 — Flutter toolchain in this environment (Docker for CI/tests)
 
-- **Status**: Accepted (workaround)
+- **Status**: Superseded in part — native toolchain now works (see Update)
 - **Date**: 2026-07-11
+
+## Update (2026-07-11) — native toolchain RESOLVED; iOS verified
+
+The hang below was **fixed**: re-signing every Mach-O in the Flutter cache with
+an **ad-hoc signature** (`codesign --force --sign -` over
+`bin/cache/**`), after removing quarantine, made the native Dart VM launch
+normally. `dart --version`, `flutter --version`, `flutter test`, and
+`flutter test integration_test -d <sim>` all run natively now.
+
+Consequently **iOS was actually built and run**:
+
+- `flutter build ios --simulator` → `✓ Built build/ios/iphonesimulator/Runner.app`.
+- Installed + launched on an **iPhone 17 (iOS 26.5) simulator** via `simctl`;
+  home screen captured (`docs/verification/ios/ios-01-home.png`).
+- The **full journey integration test passes on the real simulator**
+  (`integration_test/app_journey_test.dart` via `flutter test … -d <sim>`) —
+  home → profile → picker → generate → night-mode reader.
+
+Xcode 26.6 is present at `/Applications/Xcode.app`; it's selected without sudo
+via `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the active
+`xcode-select` dir is Command Line Tools). Docker (below) remains valid for
+Linux CI, but is no longer required on this host.
+
+---
+
+_Original context (kept for history):_
 
 ## Context
 
