@@ -8,6 +8,7 @@ import 'tokens/typography.dart';
 
 export 'tokens/borders.dart';
 export 'tokens/colors.dart';
+export 'tokens/sizes.dart';
 export 'tokens/motion.dart';
 export 'tokens/radius.dart';
 export 'tokens/shadows.dart';
