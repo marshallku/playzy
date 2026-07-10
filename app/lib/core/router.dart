@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../domain/story.dart';
@@ -18,7 +19,11 @@ abstract final class Routes {
   static const paywall = '/paywall';
 }
 
-final appRouter = GoRouter(
+/// The router is provided (not a global singleton) so each ProviderScope — the
+/// app, and every test — gets a fresh instance with isolated navigation state.
+final routerProvider = Provider<GoRouter>((ref) => createAppRouter());
+
+GoRouter createAppRouter() => GoRouter(
   initialLocation: Routes.home,
   routes: [
     GoRoute(path: Routes.home, builder: (_, __) => const HomeScreen()),
