@@ -61,27 +61,22 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
             children: [
               const Spacer(),
               Text(
-                '매일 밤, 아이만을 위한\n새로운 동화를 만들어요',
+                '아이만을 위한\n새로운 동화를 이어가요',
                 style: AppTypography.h1.copyWith(color: colors.textPrimary),
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                '무료 ${AppConstants.freeStoryLimit}편을 모두 읽으셨어요. 계속 함께해요.',
+                '무료 ${AppConstants.freeStoryLimit}편을 모두 읽으셨어요. '
+                '동화 10편을 담은 이용권으로 계속 함께해요.',
                 style: AppTypography.body.copyWith(color: colors.textSecondary),
               ),
               const Spacer(),
+              // Credit packs only (D1) — Apple IAP consumable. No subscription.
               if (_busy)
                 Center(child: CircularProgressIndicator(color: colors.primary))
-              else ...[
+              else
                 PrimaryButton(
-                  label: '월 5,900원 구독하기',
-                  onPressed: () => _buy((g) async {
-                    final products = await g.getProducts([AppConstants.proEntitlement]);
-                    return g.subscribe(products.single);
-                  }),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                TextButton(
+                  label: '동화 10편 이용권 · 4,900원',
                   onPressed: () => _buy(
                     (g) async {
                       final products = await g.getProducts(['credits_10']);
@@ -89,9 +84,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                     },
                     grantCredits: 10,
                   ),
-                  child: const Text('동화 10편 4,900원'),
                 ),
-              ],
               const SizedBox(height: AppSpacing.xxl),
             ],
           ),

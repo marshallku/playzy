@@ -6,7 +6,46 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
 )
+
+// maxPageRunes caps a single page so a runaway model can't return a huge blob.
+const maxPageRunes = 600
+
+// unsafeTerms is a small STOPGAP denylist — NOT a substitute for the deferred
+// output-moderation pass (README). If any surfaces in child-facing text, the
+// story is replaced with the safe default rather than shown.
+var unsafeTerms = []string{"죽여", "죽음", "살인", "칼로", "피가", "자살", "kill", "blood", "suicide"}
+
+// sanitizeStoryText strips control characters, neutralizes line breaks, and
+// caps length on model-produced text before it reaches a child.
+func sanitizeStoryText(s string) string {
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			return ' '
+		case unicode.IsControl(r):
+			return -1
+		default:
+			return r
+		}
+	}, s)
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > maxPageRunes {
+		s = strings.TrimSpace(string(r[:maxPageRunes]))
+	}
+	return s
+}
+
+func containsUnsafe(s string) bool {
+	low := strings.ToLower(s)
+	for _, t := range unsafeTerms {
+		if strings.Contains(low, t) {
+			return true
+		}
+	}
+	return false
+}
 
 // StoryRequest is the provider-agnostic request from the app (ADR 0001). The
 // backend owns the prompt; the app never builds one.
@@ -48,23 +87,39 @@ func parseStory(modelText string, req StoryRequest) Story {
 	if ms, ok := extractModelStory(modelText); ok {
 		// JSON was present: use its pages, or the safe default — never echo the
 		// raw JSON back as story text.
-		pages := make([]StoryPage, 0, len(ms.Pages))
+		texts := make([]string, 0, len(ms.Pages))
 		for _, p := range ms.Pages {
-			if strings.TrimSpace(p.Text) != "" {
-				pages = append(pages, StoryPage{Text: strings.TrimSpace(p.Text)})
-			}
+			texts = append(texts, p.Text)
 		}
-		if len(pages) > 0 {
-			title := strings.TrimSpace(ms.Title)
-			if title == "" {
-				title = defaultTitle(req)
-			}
-			return Story{ID: id, Title: title, Pages: pages}
+		return finalize(id, ms.Title, texts, req)
+	}
+	// No JSON at all → treat the output as prose (blank-line split).
+	return fallbackStory(id, modelText, req)
+}
+
+// finalize sanitizes and safety-checks candidate story text, returning the
+// safe default if nothing usable survives or an unsafe term appears anywhere.
+func finalize(id, rawTitle string, rawPages []string, req StoryRequest) Story {
+	title := sanitizeStoryText(rawTitle)
+	pages := make([]StoryPage, 0, len(rawPages))
+	unsafe := containsUnsafe(title)
+	for _, t := range rawPages {
+		clean := sanitizeStoryText(t)
+		if clean == "" {
+			continue
 		}
+		if containsUnsafe(clean) {
+			unsafe = true
+		}
+		pages = append(pages, StoryPage{Text: clean})
+	}
+	if unsafe || len(pages) == 0 {
 		return safeStory(id, req)
 	}
-	// No JSON at all → treat the output as prose.
-	return fallbackStory(id, modelText, req)
+	if title == "" {
+		title = defaultTitle(req)
+	}
+	return Story{ID: id, Title: title, Pages: pages}
 }
 
 // extractModelStory finds the first {...} JSON object in the text and decodes
@@ -86,21 +141,11 @@ func extractModelStory(text string) (modelStory, bool) {
 // always non-empty (acceptance criterion) rather than a blank page.
 const fallbackText = "포근한 밤이에요. 오늘도 참 잘했어요. 이제 편안히 잠들어요."
 
-// fallbackStory splits prose into pages by blank lines so we never fail hard.
-// Guarantees at least one non-empty page.
+// fallbackStory splits prose into pages by blank lines, then sanitizes and
+// safety-checks via finalize so we never fail hard or leak unsafe text.
 func fallbackStory(id, text string, req StoryRequest) Story {
 	blocks := strings.Split(strings.TrimSpace(text), "\n\n")
-	pages := make([]StoryPage, 0, len(blocks))
-	for _, b := range blocks {
-		b = strings.TrimSpace(b)
-		if b != "" {
-			pages = append(pages, StoryPage{Text: b})
-		}
-	}
-	if len(pages) == 0 {
-		pages = []StoryPage{{Text: fallbackText}}
-	}
-	return Story{ID: id, Title: defaultTitle(req), Pages: pages}
+	return finalize(id, defaultTitle(req), blocks, req)
 }
 
 func defaultTitle(req StoryRequest) string {

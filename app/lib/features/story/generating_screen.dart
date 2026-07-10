@@ -35,7 +35,10 @@ class _GeneratingScreenState extends ConsumerState<GeneratingScreen> {
       final story = await ref.read(storyControllerProvider.notifier).generate(widget.request);
       if (mounted) context.pushReplacement(Routes.story, extra: story);
     } on QuotaExceededException {
-      // Quota hit (e.g. a race past the picker's check) → send to the paywall.
+      // Local quota hit (e.g. a race past the picker's check) → paywall.
+      if (mounted) context.pushReplacement(Routes.paywall);
+    } on StoryQuotaException {
+      // Backend refused (402) — authoritative quota used up → paywall.
       if (mounted) context.pushReplacement(Routes.paywall);
     } on StoryApiException catch (e) {
       if (mounted) setState(() => _error = e.message);

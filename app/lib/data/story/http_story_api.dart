@@ -10,12 +10,15 @@ import 'story_api.dart';
 /// [StoryRequest] and parses a [Story]. The [http.Client] is injected so tests
 /// can mock transport.
 class HttpStoryApi implements StoryApi {
-  HttpStoryApi({required String baseUrl, http.Client? client})
+  HttpStoryApi({required String baseUrl, required this.deviceId, http.Client? client})
       : baseUrl = baseUrl.replaceFirst(RegExp(r'/+$'), ''),
         _client = client ?? http.Client();
 
   /// Normalized (no trailing slash) so endpoint concatenation can't yield `//`.
   final String baseUrl;
+
+  /// Identifies this install to the backend's authoritative quota (ADR 0002).
+  final String deviceId;
   final http.Client _client;
 
   @override
@@ -25,11 +28,14 @@ class HttpStoryApi implements StoryApi {
     try {
       res = await _client.post(
         uri,
-        headers: const {'content-type': 'application/json'},
+        headers: {'content-type': 'application/json', 'X-Device-Id': deviceId},
         body: jsonEncode(request.toJson()),
       );
     } catch (e) {
       throw StoryApiException('network error: $e');
+    }
+    if (res.statusCode == 402) {
+      throw const StoryQuotaException(); // quota used up → paywall
     }
     if (res.statusCode != 200) {
       throw StoryApiException('server ${res.statusCode}: ${res.body}');

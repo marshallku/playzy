@@ -7,12 +7,28 @@ the provider. Today it is the thinnest viable adapter: it proxies to a local
 
 ## Contract (what the app depends on)
 
-- `POST /v1/stories` — body `StoryRequest` (`childName`, `ageBand`,
-  `situationIds`, `interests?`, `companionName?`) → `Story` (`id`, `title`,
-  `pages[]`, `createdAt`).
+- `POST /v1/stories` — header `X-Device-Id` (required); body `StoryRequest`
+  (`childName`, `ageBand`, `situationIds`, `interests?`, `companionName?`) →
+  `Story` (`id`, `title`, `pages[]`, `createdAt`). Enforces the quota: `402` when
+  free stories are used up and no credits remain.
+- `GET /v1/quota` — header `X-Device-Id` → `{freeUsed, freeLimit, credits,
+  canGenerate}`. The authoritative allowance (ADR 0002).
+- `POST /v1/credits` — header `X-Device-Id`, body `{amount}` → grants credits.
+  **Dev stub:** in production this is driven by a *verified* StoreKit/RevenueCat
+  purchase webhook, never called by the client directly.
 - `GET /v1/catalog/situations` — the SDUI document for the situation picker
   (ADR 0003), matching the app's bundled default.
 - `GET /healthz` — `ok`.
+
+## Quota (ADR 0002)
+
+The backend is the **authoritative** enforcer: per `X-Device-Id`, a free tier
+(3 stories) then consumable credits (credit-packs-only, D1 — no subscription).
+Generation reserves quota **before** calling the AI and refunds on failure, so a
+failed story is never charged and the limit can't be bypassed client-side. The
+app's local counters are only an offline mirror. `InMemoryQuotaStore` is
+dev-only — production must back it with a shared store (Redis/DB) so quota
+survives restarts and scales horizontally.
 
 ## Run (local dev)
 

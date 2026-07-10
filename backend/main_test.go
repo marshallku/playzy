@@ -11,9 +11,19 @@ import (
 
 func newTestServer(kagiURL string) *server {
 	return &server{
-		cfg:  config{kagiURL: kagiURL, timeout: 5 * time.Second},
-		http: &http.Client{Timeout: 5 * time.Second},
+		cfg:   config{kagiURL: kagiURL, timeout: 5 * time.Second, adminToken: "test-admin"},
+		http:  &http.Client{Timeout: 5 * time.Second},
+		quota: NewInMemoryQuotaStore(),
 	}
+}
+
+// storyRequest builds a POST /v1/stories request with the required device header.
+func storyRequest(body, deviceID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/v1/stories", strings.NewReader(body))
+	if deviceID != "" {
+		req.Header.Set(deviceHeader, deviceID)
+	}
+	return req
 }
 
 func TestHandleStories_HappyPath(t *testing.T) {
@@ -30,7 +40,7 @@ func TestHandleStories_HappyPath(t *testing.T) {
 
 	srv := newTestServer(kagi.URL)
 	body := `{"childName":"하준","ageBand":"toddler","situationIds":["bedtime"]}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/stories", strings.NewReader(body))
+	req := storyRequest(body, "dev1")
 	rec := httptest.NewRecorder()
 
 	srv.handleStories(rec, req)
@@ -52,7 +62,7 @@ func TestHandleStories_HappyPath(t *testing.T) {
 
 func TestHandleStories_ValidatesRequest(t *testing.T) {
 	srv := newTestServer("http://unused")
-	req := httptest.NewRequest(http.MethodPost, "/v1/stories", strings.NewReader(`{"childName":""}`))
+	req := storyRequest(`{"childName":""}`, "dev1")
 	rec := httptest.NewRecorder()
 
 	srv.handleStories(rec, req)
@@ -62,10 +72,21 @@ func TestHandleStories_ValidatesRequest(t *testing.T) {
 	}
 }
 
+func TestHandleStories_RequiresDeviceHeader(t *testing.T) {
+	srv := newTestServer("http://unused")
+	req := storyRequest(`{"childName":"하준","situationIds":["bedtime"]}`, "") // no header
+	rec := httptest.NewRecorder()
+
+	srv.handleStories(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 without device header", rec.Code)
+	}
+}
+
 func TestHandleStories_WhitespaceChildNameIs400(t *testing.T) {
 	srv := newTestServer("http://unused")
-	req := httptest.NewRequest(http.MethodPost, "/v1/stories",
-		strings.NewReader(`{"childName":"   ","situationIds":["bedtime"]}`))
+	req := storyRequest(`{"childName":"   ","situationIds":["bedtime"]}`, "dev1")
 	rec := httptest.NewRecorder()
 
 	srv.handleStories(rec, req)
@@ -77,8 +98,7 @@ func TestHandleStories_WhitespaceChildNameIs400(t *testing.T) {
 
 func TestHandleStories_BlankSituationIdsIs400(t *testing.T) {
 	srv := newTestServer("http://unused")
-	req := httptest.NewRequest(http.MethodPost, "/v1/stories",
-		strings.NewReader(`{"childName":"하준","situationIds":["",""]}`))
+	req := storyRequest(`{"childName":"하준","situationIds":["",""]}`, "dev1")
 	rec := httptest.NewRecorder()
 
 	srv.handleStories(rec, req)
@@ -88,16 +108,19 @@ func TestHandleStories_BlankSituationIdsIs400(t *testing.T) {
 	}
 }
 
-func TestHandleStories_KagiDownIs502(t *testing.T) {
+func TestHandleStories_KagiDownIs502AndRefunds(t *testing.T) {
 	srv := newTestServer("http://127.0.0.1:0") // nothing listening
-	body := `{"childName":"하준","situationIds":["bedtime"]}`
-	req := httptest.NewRequest(http.MethodPost, "/v1/stories", strings.NewReader(body))
+	req := storyRequest(`{"childName":"하준","situationIds":["bedtime"]}`, "dev1")
 	rec := httptest.NewRecorder()
 
 	srv.handleStories(rec, req)
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", rec.Code)
+	}
+	// A failed generation must be refunded — the free slot is not consumed.
+	if got := srv.quota.State("dev1").FreeUsed; got != 0 {
+		t.Fatalf("free slot not refunded after failure: used = %d", got)
 	}
 }
 

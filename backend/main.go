@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -22,13 +23,18 @@ type config struct {
 	addr    string
 	kagiURL string
 	timeout time.Duration
+	// adminToken guards privileged endpoints (credit grants). Empty → those
+	// endpoints are disabled entirely. In production the verified-purchase
+	// webhook presents this token; it is never known to app clients.
+	adminToken string
 }
 
 func loadConfig() config {
 	return config{
-		addr:    envOr("PLAYZY_ADDR", ":8080"),
-		kagiURL: envOr("KAGI_SERVE_URL", "http://127.0.0.1:8921"),
-		timeout: 120 * time.Second,
+		addr:       envOr("PLAYZY_ADDR", ":8080"),
+		kagiURL:    envOr("KAGI_SERVE_URL", "http://127.0.0.1:8921"),
+		timeout:    120 * time.Second,
+		adminToken: os.Getenv("PLAYZY_ADMIN_TOKEN"),
 	}
 }
 
@@ -41,11 +47,17 @@ func envOr(key, fallback string) string {
 
 func main() {
 	cfg := loadConfig()
-	srv := &server{cfg: cfg, http: &http.Client{Timeout: cfg.timeout}}
+	srv := &server{
+		cfg:   cfg,
+		http:  &http.Client{Timeout: cfg.timeout},
+		quota: NewInMemoryQuotaStore(),
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/stories", srv.handleStories)
 	mux.HandleFunc("GET /v1/catalog/situations", srv.handleCatalog)
+	mux.HandleFunc("GET /v1/quota", srv.handleQuota)
+	mux.HandleFunc("POST /v1/credits", srv.handleGrantCredits)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -57,14 +69,24 @@ func main() {
 }
 
 type server struct {
-	cfg  config
-	http *http.Client
+	cfg   config
+	http  *http.Client
+	quota QuotaStore
 }
+
+// deviceID identifies the caller for quota (ADR 0002). The app sends a stable,
+// locally-generated id; a real launch pairs this with account auth.
+const deviceHeader = "X-Device-Id"
 
 func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 	var req StoryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	deviceID := strings.TrimSpace(r.Header.Get(deviceHeader))
+	if deviceID == "" {
+		httpError(w, http.StatusBadRequest, deviceHeader+" header is required")
 		return
 	}
 	req.ChildName = strings.TrimSpace(req.ChildName)
@@ -74,9 +96,25 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Authoritative quota (ADR 0002): reserve before generating, refund on
+	// failure — a failed generation is never charged, and it can't be bypassed
+	// client-side.
+	c, err := s.quota.Reserve(deviceID)
+	if errors.Is(err, errQuotaExceeded) {
+		httpError(w, http.StatusPaymentRequired, "free stories used up — purchase credits to continue")
+		return
+	}
+	if err != nil {
+		// Infrastructure failure (e.g. the production store) — not "out of quota".
+		log.Printf("quota reserve: %v", err)
+		httpError(w, http.StatusInternalServerError, "quota check failed")
+		return
+	}
+
 	prompt := buildStoryPrompt(req)
 	text, err := s.callAI(r.Context(), prompt)
 	if err != nil {
+		s.quota.Refund(deviceID, c)
 		log.Printf("callAI: %v", err)
 		httpError(w, http.StatusBadGateway, "story generation failed")
 		return
@@ -85,6 +123,44 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 	story := parseStory(text, req)
 	story.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	writeJSON(w, http.StatusOK, story)
+}
+
+// GET /v1/quota — the app reads authoritative remaining allowance.
+func (s *server) handleQuota(w http.ResponseWriter, r *http.Request) {
+	deviceID := strings.TrimSpace(r.Header.Get(deviceHeader))
+	if deviceID == "" {
+		httpError(w, http.StatusBadRequest, deviceHeader+" header is required")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.quota.State(deviceID))
+}
+
+// POST /v1/credits — grant purchased credits. Privileged: requires the admin
+// token (the verified StoreKit/RevenueCat purchase webhook presents it). Never
+// callable by app clients. Disabled entirely when no admin token is configured.
+func (s *server) handleGrantCredits(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.adminToken == "" {
+		httpError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if r.Header.Get("X-Admin-Token") != s.cfg.adminToken {
+		httpError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	deviceID := strings.TrimSpace(r.Header.Get(deviceHeader))
+	if deviceID == "" {
+		httpError(w, http.StatusBadRequest, deviceHeader+" header is required")
+		return
+	}
+	var body struct {
+		Amount int `json:"amount"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Amount <= 0 {
+		httpError(w, http.StatusBadRequest, "positive amount required")
+		return
+	}
+	s.quota.AddCredits(deviceID, body.Amount)
+	writeJSON(w, http.StatusOK, s.quota.State(deviceID))
 }
 
 func (s *server) handleCatalog(w http.ResponseWriter, _ *http.Request) {

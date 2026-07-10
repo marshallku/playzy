@@ -31,20 +31,21 @@ Exit: the entire experience is demoable and tested offline.
 - [x] `HttpStoryApi` + `HttpCatalogApi` in the app target the stable contract
 - [x] Prompt engineering + age-band guardrails; structured story output
 - [x] SDUI catalog served from backend
-- [ ] Server-side generation quota (free-tier enforcement) — app gating is a
-      stand-in until this lands
+- [x] Server-side generation quota (free-tier + credits, per-device,
+      authoritative; app sends `X-Device-Id`, 402 → paywall)
 - [ ] End-to-end run verified with real Kagi credentials (needs user creds)
 
 Exit: real personalized stories end-to-end on a dev backend (pending creds).
 
-## M3 — Monetization (gated on D1)
+## M3 — Monetization (D1 resolved: credit packs only)
 
-- [ ] Confirm model & price (D1)
-- [ ] `ApplePaymentGateway` (RevenueCat) — consumable + subscription
-- [ ] Backend entitlements + RevenueCat webhooks
-- [ ] Paywall as WebView experiment surface
+- [x] Model decided: credit packs only, Apple IAP consumable (D1)
+- [x] Backend credit grant endpoint (dev stub) + app paywall = credit packs
+- [ ] `ApplePaymentGateway` (RevenueCat/StoreKit) — consumable purchase
+- [ ] Verified purchase webhook → backend `POST /v1/credits` (replace dev stub)
+- [ ] Paywall as WebView experiment surface (optional)
 
-Exit: a user can pay and lift the quota on a TestFlight build.
+Exit: a user can buy a credit pack and lift the quota on a TestFlight build.
 
 ## M4 — Launch hardening (iOS)
 

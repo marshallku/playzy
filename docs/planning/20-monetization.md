@@ -16,17 +16,17 @@ shape.
   bypassed by reinstalling if tied to sign-in; anonymous device accounts get a
   provisional quota that converts on sign-in.
 
-### Paid tier (default assumption — confirm D1)
+### Paid tier — credit packs only (D1 resolved 2026-07-11)
 
-Offer **both**, since the `PaymentGateway` interface supports both:
+**No subscription.** After the free tier, users buy **consumable credit packs**
+via Apple IAP:
 
-- **Subscription (auto-renewable IAP):** unlimited (fair-use) stories.
-  - Korea price benchmark: **₩4,900–5,900 / month**, **₩29,000–39,000 / year**
-    (Korea is price-sensitive; global sweet spot is $9.99/mo but KR indie apps
-    sit far lower).
-  - Provisional launch price: **₩5,900/mo or ₩39,000/yr** — tune with data.
-- **Credit pack (consumable IAP):** e.g. 10 stories for a one-time fee, for
-  users who won't subscribe. Provisional: **₩4,900 / 10 stories**.
+- **Credit pack (consumable IAP):** 10 stories per pack. Provisional price:
+  **₩4,900 / 10 stories** — tune with data.
+
+The `PaymentGateway` interface still supports subscriptions (the `subscribe`
+method + the `pro_monthly` entitlement seam remain) so the decision is cheap to
+revisit, but the app offers only credit packs.
 
 ### iOS payment path
 

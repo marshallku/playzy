@@ -18,6 +18,7 @@ void main() {
     test('posts the request and parses the story on 200', () async {
       late http.Request captured;
       final api = HttpStoryApi(
+        deviceId: 'test-device',
         baseUrl: 'https://api.test',
         client: MockClient((req) async {
           captured = req;
@@ -39,6 +40,7 @@ void main() {
 
       expect(captured.url.toString(), 'https://api.test/v1/stories');
       expect(captured.method, 'POST');
+      expect(captured.headers['X-Device-Id'], 'test-device');
       expect(jsonDecode(captured.body)['childName'], '하준');
       expect(story.title, '하준 이야기');
       expect(story.pages.single.text, '한 페이지');
@@ -47,6 +49,7 @@ void main() {
     test('normalizes a trailing slash in the base URL (no //)', () async {
       late Uri url;
       final api = HttpStoryApi(
+        deviceId: 'test-device',
         baseUrl: 'https://api.test/',
         client: MockClient((req) async {
           url = req.url;
@@ -62,14 +65,25 @@ void main() {
 
     test('throws StoryApiException on a non-200 status', () async {
       final api = HttpStoryApi(
+        deviceId: 'test-device',
         baseUrl: 'https://api.test',
         client: MockClient((_) async => http.Response('boom', 500)),
       );
       expect(() => api.generateStory(_request), throwsA(isA<StoryApiException>()));
     });
 
+    test('maps HTTP 402 to StoryQuotaException (paywall)', () async {
+      final api = HttpStoryApi(
+        deviceId: 'test-device',
+        baseUrl: 'https://api.test',
+        client: MockClient((_) async => http.Response('quota', 402)),
+      );
+      expect(() => api.generateStory(_request), throwsA(isA<StoryQuotaException>()));
+    });
+
     test('throws StoryApiException on malformed JSON', () async {
       final api = HttpStoryApi(
+        deviceId: 'test-device',
         baseUrl: 'https://api.test',
         client: MockClient((_) async => http.Response('not json', 200)),
       );
@@ -78,6 +92,7 @@ void main() {
 
     test('wraps transport errors as StoryApiException', () async {
       final api = HttpStoryApi(
+        deviceId: 'test-device',
         baseUrl: 'https://api.test',
         client: MockClient((_) async => throw Exception('offline')),
       );

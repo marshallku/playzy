@@ -15,3 +15,9 @@ class StoryApiException implements Exception {
   @override
   String toString() => 'StoryApiException: $message';
 }
+
+/// The backend refused generation because the quota is used up (HTTP 402).
+/// The UI routes this to the paywall rather than showing a generic error.
+class StoryQuotaException extends StoryApiException {
+  const StoryQuotaException() : super('quota exceeded');
+}

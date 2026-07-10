@@ -84,14 +84,18 @@ entitlement (`pro_monthly` or `credits_N`) that lifts the quota.
 - The paywall *presentation* can be a WebView experiment surface (ADR 0003)
   even while the *transaction* goes through native IAP — separate concerns.
 
-## Open user decision (tracked in planning/90-open-decisions.md — D1)
+## User decision — RESOLVED (D1, 2026-07-11)
 
-**iOS monetization model:** RevenueCat-backed Apple IAP is the viable path.
-Remaining choice is **subscription vs. credit packs vs. both** for launch, and
-the price points. Default assumption for now: **both** (a monthly subscription
-+ a one-time credit pack), which the interface already supports. Toss is wired
-as the web/Android gateway, not iOS. **Confirm before we implement real payment
-in Phase 5.**
+**iOS monetization model: credit packs only** (no subscription), Apple IAP
+consumable via RevenueCat. The app offers a single **10-stories / ₩4,900**
+pack. The `subscribe`/`pro_monthly` seam stays in the interface so the decision
+is cheap to revisit, but it is not surfaced in the paywall. Toss remains the
+web/Android gateway, not iOS.
+
+Server-side quota (ADR 0002 core) is now implemented in `backend/` (free tier +
+consumable credits, per-device, authoritative). Real IAP purchase → server
+credit grant runs via a verified StoreKit/RevenueCat webhook (Phase 5 M3); the
+backend's `POST /v1/credits` is the dev stub for that path.
 
 ## Consequences
 

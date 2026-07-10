@@ -24,14 +24,21 @@ final sharedPreferencesProvider = Provider<SharedPreferences>(
   (ref) => throw UnimplementedError('override sharedPreferencesProvider in main()'),
 );
 
+/// Stable per-install id for the backend's authoritative quota (ADR 0002).
+/// Generated and persisted in main(); overridden into the scope there.
+final deviceIdProvider = Provider<String>(
+  (ref) => throw UnimplementedError('override deviceIdProvider in main()'),
+);
+
 final profileRepositoryProvider = Provider<ProfileRepository>(
   (ref) => PrefsProfileRepository(ref.watch(sharedPreferencesProvider)),
 );
 
 // Real backend when configured (--dart-define=PLAYZY_API_BASE_URL), else the
 // fake so the app runs with no server (ADR 0001).
-final storyApiProvider = Provider<StoryApi>((ref) =>
-    Env.hasBackend ? HttpStoryApi(baseUrl: Env.apiBaseUrl) : const FakeStoryApi());
+final storyApiProvider = Provider<StoryApi>((ref) => Env.hasBackend
+    ? HttpStoryApi(baseUrl: Env.apiBaseUrl, deviceId: ref.watch(deviceIdProvider))
+    : const FakeStoryApi());
 
 final paymentGatewayProvider = Provider<PaymentGateway>((ref) {
   final gateway = FakePaymentGateway();

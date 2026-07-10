@@ -63,6 +63,35 @@ func TestParseStory_EmptyModelOutputStillNonEmpty(t *testing.T) {
 	}
 }
 
+func TestParseStory_UnsafeContentReplacedWithSafeStory(t *testing.T) {
+	text := `{"title":"밤","pages":[{"text":"괴물이 아이를 죽여버렸어요."}]}`
+	story := parseStory(text, sampleReq)
+	for _, p := range story.Pages {
+		if containsUnsafe(p.Text) {
+			t.Fatalf("unsafe text reached the reader: %q", p.Text)
+		}
+	}
+	if story.Pages[0].Text != fallbackText {
+		t.Fatalf("expected safe fallback, got %q", story.Pages[0].Text)
+	}
+}
+
+func TestParseStory_SanitizesControlCharsAndCapsLength(t *testing.T) {
+	long := strings.Repeat("\uac00", maxPageRunes+50)
+	// JSON-escaped tab in the first page, an over-long second page.
+	text := `{"title":"t","pages":[{"text":"\uc548\ub155\\t\ud558\uc138\uc694"}, {"text":"` + long + `"}]}`
+	story := parseStory(text, sampleReq)
+	if len(story.Pages) != 2 {
+		t.Fatalf("expected 2 pages, got %d", len(story.Pages))
+	}
+	if strings.ContainsAny(story.Pages[0].Text, "\n\r\t") {
+		t.Fatalf("control chars not neutralized: %q", story.Pages[0].Text)
+	}
+	if r := []rune(story.Pages[1].Text); len(r) > maxPageRunes {
+		t.Fatalf("page length not capped: %d runes", len(r))
+	}
+}
+
 func TestNewStoryID_UniquePerGeneration(t *testing.T) {
 	// Each generation is a distinct artifact; ids must not collide even for the
 	// same request (avoids overwriting saved stories).

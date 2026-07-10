@@ -5,7 +5,7 @@ to be **swappable** so work isn't blocked. Referenced from ADRs by ID.
 
 | ID | Decision | Default we're building toward | Blocks | Status |
 | --- | --- | --- | --- | --- |
-| D1 | iOS monetization model & price | Apple IAP (RevenueCat); **both** a monthly subscription + one-time credit pack; price TBD | Phase 5 real payment | Open — confirm before wiring live IAP |
+| D1 | iOS monetization model & price | **Resolved:** credit packs only (no subscription), Apple IAP consumable. Provisional: 10 stories / ₩4,900 | Phase 5 real payment | **Resolved 2026-07-11** — user chose credit-packs-only |
 | D2 | Free-tier limit (how many free stories) | Provisional: **3 free stories**, then paywall | Backend quota + paywall copy | Open — refine with competitor benchmarks |
 | D3 | In-story illustration strategy | **Text-only MVP**; art is a fast-follow | Story reader, cost model | Open — see design ⚠️ flags |
 | D4 | Brand primary hue | Periwinkle `#4E6FBC` (AA-compliant; research's `#6A89CC` failed AA) | Final DESIGN.md tokens | Open — needs designer; must keep ≥4.5:1 with onBrand text |
