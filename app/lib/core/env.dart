@@ -8,4 +8,13 @@ abstract final class Env {
   /// True once a real backend URL is configured — flips the app from fakes to
   /// the HTTP clients (see core/providers.dart).
   static bool get hasBackend => apiBaseUrl.isNotEmpty;
+
+  /// DEV ONLY: admin token that lets the app grant itself server-side credits
+  /// via the backend's admin-gated endpoint, so the full paid flow can be
+  /// exercised end-to-end against a local backend. Empty in real builds — then
+  /// credits are granted only by a verified purchase webhook (ADR 0002).
+  static const String devAdminToken =
+      String.fromEnvironment('PLAYZY_DEV_ADMIN_TOKEN', defaultValue: '');
+
+  static bool get hasDevAdminToken => devAdminToken.isNotEmpty;
 }

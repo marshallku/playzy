@@ -48,6 +48,7 @@ Future<void> _warmUp(ProviderContainer c) async {
   await c.read(generatedCountProvider.future);
   await c.read(creditsProvider.future);
   await c.read(entitlementsProvider.future);
+  await c.read(quotaStateProvider.future);
 }
 
 const _request = StoryRequest(

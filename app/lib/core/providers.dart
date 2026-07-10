@@ -6,10 +6,12 @@ import '../data/catalog/http_catalog_api.dart';
 import '../data/payment/fake_payment_gateway.dart';
 import '../data/payment/payment_gateway.dart';
 import '../data/profile/profile_repository.dart';
+import '../data/quota/quota_api.dart';
 import '../data/story/fake_story_api.dart';
 import '../data/story/http_story_api.dart';
 import '../data/story/story_api.dart';
 import '../domain/child_profile.dart';
+import '../domain/quota_state.dart';
 import '../domain/story.dart';
 import '../sdui/sdui_models.dart';
 import 'constants.dart';
@@ -48,6 +50,12 @@ final paymentGatewayProvider = Provider<PaymentGateway>((ref) {
 
 final catalogApiProvider = Provider<CatalogApi>((ref) =>
     Env.hasBackend ? HttpCatalogApi(baseUrl: Env.apiBaseUrl) : const FakeCatalogApi());
+
+/// Backend quota client — non-null only in backend mode. When null, quota is
+/// built from local mirrors (ADR 0002).
+final quotaApiProvider = Provider<QuotaApi?>((ref) => Env.hasBackend
+    ? HttpQuotaApi(baseUrl: Env.apiBaseUrl, deviceId: ref.watch(deviceIdProvider))
+    : null);
 
 /// The situation-picker SDUI document. Falls back to the bundled default if the
 /// fetch fails, the schema is newer than supported, OR the document has no
@@ -138,24 +146,30 @@ final entitlementsProvider = StreamProvider<Set<String>>((ref) async* {
   yield* gateway.entitlementChanges();
 });
 
-/// Whether the user may generate another story: has Pro, is under the free
-/// limit, or holds paid credits. **Fails closed while any input is still
-/// loading** so the quota can't be bypassed during hydration (ADR 0002).
-final canGenerateProvider = Provider<bool>((ref) {
-  final countAsync = ref.watch(generatedCountProvider);
-  final creditsAsync = ref.watch(creditsProvider);
-  final entAsync = ref.watch(entitlementsProvider);
-  // Fail closed unless every gate input has a real value — loading OR error
-  // must never let a generation through (ADR 0002).
-  if (!countAsync.hasValue || !creditsAsync.hasValue || !entAsync.hasValue) {
-    return false;
+/// The user's story allowance — the ONE shape the UI reads (home count, gating,
+/// paywall). Backend mode fetches the authoritative `/v1/quota`; offline mode
+/// builds it from local mirrors. Refreshed after each backend generation.
+final quotaStateProvider = FutureProvider<QuotaState>((ref) async {
+  final api = ref.watch(quotaApiProvider);
+  if (api != null) {
+    return api.fetchQuota(); // backend is authoritative (ADR 0002)
   }
-  final entitlements = entAsync.valueOrNull ?? const <String>{};
-  if (entitlements.contains(AppConstants.proEntitlement)) return true;
-  final count = countAsync.valueOrNull ?? 0;
-  final credits = creditsAsync.valueOrNull ?? 0;
-  return count < AppConstants.freeStoryLimit || credits > 0;
+  final count = await ref.watch(generatedCountProvider.future);
+  final credits = await ref.watch(creditsProvider.future);
+  final entitlements = await ref.watch(entitlementsProvider.future);
+  final hasPro = entitlements.contains(AppConstants.proEntitlement);
+  return QuotaState(
+    freeUsed: count,
+    freeLimit: AppConstants.freeStoryLimit,
+    credits: credits,
+    canGenerate: hasPro || count < AppConstants.freeStoryLimit || credits > 0,
+  );
 });
+
+/// Whether the user may generate another story. **Fails closed while quota is
+/// loading or errored** so it can't be bypassed during hydration (ADR 0002).
+final canGenerateProvider = Provider<bool>(
+    (ref) => ref.watch(quotaStateProvider).valueOrNull?.canGenerate ?? false);
 
 /// Thrown when generation is attempted beyond the quota. The controller
 /// enforces the gate itself — the UI check is a convenience, not the guard.
@@ -184,24 +198,43 @@ class StoryController extends AsyncNotifier<Story?> {
     if (!ref.read(canGenerateProvider)) throw const QuotaExceededException();
     _inFlight = true;
     state = const AsyncLoading();
-    // Reserve inside the try so a persistence failure still releases the lock.
-    _Charge? charge;
     try {
-      charge = await _reserve();
-      final story = await ref.read(storyApiProvider).generateStory(request);
+      final story = ref.read(quotaApiProvider) != null
+          ? await _generateViaBackend(request)
+          : await _generateLocal(request);
       state = AsyncData(story);
       return story;
     } catch (e, st) {
-      // Best-effort rollback; a refund failure must not mask the original error.
-      if (charge != null) {
-        try {
-          await _refund(charge);
-        } catch (_) {/* keep the original generation error */}
-      }
       state = AsyncError(e, st);
       rethrow;
     } finally {
       _inFlight = false;
+    }
+  }
+
+  /// Backend mode: the server reserves/charges and returns 402 (mapped to
+  /// [StoryQuotaException]) when exhausted. Refresh the authoritative quota on
+  /// EVERY attempt — success or failure — so gating/home never show stale
+  /// allowance after a 402.
+  Future<Story> _generateViaBackend(StoryRequest request) async {
+    try {
+      return await ref.read(storyApiProvider).generateStory(request);
+    } finally {
+      ref.invalidate(quotaStateProvider);
+    }
+  }
+
+  /// Offline mode: reserve-then-generate against the local mirror, refunding on
+  /// failure so a failed call is never charged.
+  Future<Story> _generateLocal(StoryRequest request) async {
+    final charge = await _reserve();
+    try {
+      return await ref.read(storyApiProvider).generateStory(request);
+    } catch (_) {
+      try {
+        await _refund(charge);
+      } catch (_) {/* keep the original generation error */}
+      rethrow;
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants.dart';
+import '../../core/env.dart';
 import '../../core/providers.dart';
 import '../../data/payment/payment_gateway.dart';
 import '../../design/theme.dart';
@@ -30,11 +31,17 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     try {
       final gateway = ref.read(paymentGatewayProvider);
       final result = await action(gateway);
-      // Mirror the backend: a successful consumable purchase adds to the local
-      // credit balance (ADR 0002). Subscriptions flow through the entitlement
-      // stream and need no local grant.
       if (result.success && grantCredits > 0) {
-        await ref.read(creditsProvider.notifier).add(grantCredits);
+        final applied = await _grantCredits(grantCredits);
+        if (!applied) {
+          // Backend mode with no dev/webhook path — don't pretend it worked.
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('이 빌드에서는 결제가 아직 준비되지 않았어요.')),
+            );
+          }
+          return;
+        }
       }
       if (mounted && result.success && context.canPop()) context.pop();
     } catch (e) {
@@ -46,6 +53,23 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Grants purchased credits where the quota actually lives. Returns whether
+  /// credits were actually applied:
+  /// - backend mode → the server (dev admin path), then refresh. Returns false
+  ///   when no dev token is set (real builds grant via a verified webhook).
+  /// - offline mode → the local credit mirror (always applied).
+  Future<bool> _grantCredits(int amount) async {
+    final quotaApi = ref.read(quotaApiProvider);
+    if (quotaApi != null) {
+      if (!Env.hasDevAdminToken) return false;
+      await quotaApi.grantCreditsDev(amount, Env.devAdminToken);
+      ref.invalidate(quotaStateProvider);
+      return true;
+    }
+    await ref.read(creditsProvider.notifier).add(amount);
+    return true;
   }
 
   @override

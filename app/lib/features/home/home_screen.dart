@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/constants.dart';
 import '../../core/providers.dart';
 import '../../core/router.dart';
 import '../../design/theme.dart';
 import '../../design/widgets/primary_button.dart';
+import '../../domain/quota_state.dart';
 
 /// Landing: greet the parent, show free-tier status, route to setup or story.
 class HomeScreen extends ConsumerWidget {
@@ -16,10 +16,9 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colors;
     final profile = ref.watch(profileControllerProvider);
-    final count = ref.watch(generatedCountProvider).valueOrNull ?? 0;
-    final hasPro = (ref.watch(entitlementsProvider).valueOrNull ?? const {})
-        .contains(AppConstants.proEntitlement);
-    final remaining = (AppConstants.freeStoryLimit - count).clamp(0, AppConstants.freeStoryLimit);
+    // Single source of allowance — backend-authoritative or local mirror. Null
+    // while loading/errored so we never synthesize a "3 free" that isn't real.
+    final quota = ref.watch(quotaStateProvider).valueOrNull;
 
     return Scaffold(
       body: SafeArea(
@@ -40,8 +39,7 @@ class HomeScreen extends ConsumerWidget {
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Text('문제가 생겼어요: $e',
                     style: AppTypography.body.copyWith(color: colors.error)),
-                data: (child) =>
-                    _Cta(hasProfile: child != null, hasPro: hasPro, remaining: remaining),
+                data: (child) => _Cta(hasProfile: child != null, quota: quota),
               ),
               const SizedBox(height: AppSpacing.xxl),
             ],
@@ -53,23 +51,31 @@ class HomeScreen extends ConsumerWidget {
 }
 
 class _Cta extends StatelessWidget {
-  const _Cta({required this.hasProfile, required this.hasPro, required this.remaining});
+  const _Cta({required this.hasProfile, required this.quota});
 
   final bool hasProfile;
-  final bool hasPro;
-  final int remaining;
+  final QuotaState? quota; // null while the allowance is loading/unavailable
+
+  /// Null while quota is unknown — we show nothing rather than a fake count.
+  String? get _allowanceLabel {
+    final q = quota;
+    if (q == null) return null;
+    if (q.credits > 0) return '이용권 ${q.credits}편 남았어요';
+    return '무료 동화 ${q.freeRemaining}편 남았어요';
+  }
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final label = _allowanceLabel;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!hasPro)
+        if (label != null)
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.md),
             child: Text(
-              '무료 동화 $remaining편 남았어요',
+              label,
               style: AppTypography.bodySm.copyWith(color: colors.textSecondary),
             ),
           ),

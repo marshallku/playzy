@@ -33,6 +33,8 @@ Exit: the entire experience is demoable and tested offline.
 - [x] SDUI catalog served from backend
 - [x] Server-side generation quota (free-tier + credits, per-device,
       authoritative; app sends `X-Device-Id`, 402 → paywall)
+- [x] App reads authoritative `/v1/quota` (unified quota state; home, gating,
+      paywall all reflect the server; dev credit-grant path for E2E demo)
 - [ ] End-to-end run verified with real Kagi credentials (needs user creds)
 
 Exit: real personalized stories end-to-end on a dev backend (pending creds).

@@ -40,9 +40,17 @@ kagi serve -addr 127.0.0.1:8921 &
 # 2) Start the Playzy backend (defaults shown).
 KAGI_SERVE_URL=http://127.0.0.1:8921 PLAYZY_ADDR=:8080 go run .
 
-# 3) Point the app at it.
+# 3) Point the app at it. The app then reads the authoritative quota from
+#    GET /v1/quota, sends X-Device-Id, and shows the paywall on 402.
 cd ../app
 flutter run --dart-define=PLAYZY_API_BASE_URL=http://localhost:8080
+
+# To also exercise the PAID flow end-to-end against the local backend, run the
+# backend with an admin token and give the app the same token so the paywall can
+# grant server credits (dev only — in prod a verified purchase webhook does this):
+#   PLAYZY_ADMIN_TOKEN=devsecret KAGI_SERVE_URL=... go run .
+#   flutter run --dart-define=PLAYZY_API_BASE_URL=http://localhost:8080 \
+#               --dart-define=PLAYZY_DEV_ADMIN_TOKEN=devsecret
 ```
 
 With no `PLAYZY_API_BASE_URL`, the app runs entirely on fakes (no backend
