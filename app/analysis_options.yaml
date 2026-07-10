@@ -1,0 +1,18 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true
+  errors:
+    # Treat unused imports/vars as errors — keep the tree clean.
+    unused_import: error
+    unused_local_variable: error
+
+linter:
+  rules:
+    # Prefer const where possible for the calm, low-rebuild UI.
+    prefer_const_constructors: true
+    prefer_final_locals: true
+    # Design tokens are the single source of truth — flag stray magic values.
+    # (enforced by convention + review; see ADR 0004 / DESIGN.md §12)
