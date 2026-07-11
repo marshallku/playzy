@@ -7,12 +7,17 @@ compiles.
 
 | Check | How | Result |
 | --- | --- | --- |
-| App unit + widget tests | `flutter test` (Docker, ADR 0005) | **86 passing** |
-| App **end-to-end journey** | `flutter test test/app_journey_test.dart` | **passing** — drives the REAL app (router + providers + every screen) cold-start → finished story |
+| App unit + widget tests | `flutter test` | **108 passing** |
+| App **end-to-end journey** | `flutter test test/app_journey_test.dart` | **passing** — drives the REAL app (router + providers + every screen) cold-start → **story options** → finished story |
 | Static analysis | `flutter analyze` | clean |
-| Backend tests | `go test ./...` | **31 passing** |
+| Backend tests | `go test ./...` | **34 passing** |
 | Backend vet/format | `go vet` / `gofmt` | clean |
 | **Real web build** | `flutter build web --release` | ✓ Built `build/web` |
+
+Story-richness (planning/40) adds the generation controls (characters/mood/length/
+setting), a story-options step, story persistence, and the home redesign — all
+covered by the journey test plus `story_options_screen_test`, `story_library_test`,
+`library_save_test`, and `home_screen_test`.
 
 ## iOS — actually built and run in the simulator
 
@@ -23,7 +28,7 @@ cache), so iOS was built and run for real:
 | --- | --- | --- |
 | iOS **build** | `flutter build ios --simulator` | ✓ Built `Runner.app` (Xcode 26.6) |
 | Run in **simulator** | `simctl install/launch` on iPhone 17 (iOS 26.5) | app runs — [ios/ios-01-home.png](ios/ios-01-home.png) |
-| iOS **e2e journey** | `flutter test integration_test/app_journey_test.dart -d <sim>` | **All tests passed** — full flow incl. night-mode reader, on the real simulator |
+| iOS **e2e journey** | `flutter test integration_test/app_journey_test.dart -d <sim>` | **All tests passed** — full flow incl. the story-options step (adds a character, picks a length) and the night-mode reader, on the real simulator |
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # no sudo
@@ -47,6 +52,12 @@ Beyond the automated test, the running app was driven by real synthetic taps
 - [ios/ios-01-home.png](ios/ios-01-home.png) — the app running on iPhone 17.
 - [ios/ios-02-profile.png](ios/ios-02-profile.png) — reached by **tapping** the
   home CTA; the age-band and interest (공룡) chips respond to taps too.
+- [ios/ios-03-home-redesign.png](ios/ios-03-home-redesign.png) — the **redesigned
+  home** (planning/40) on the real simulator: the allowance now renders as a
+  card (🌙 "무료 동화 3편 남았어요" + "잠들기 전 포근한 이야기 한 편") above the CTA. The
+  story-options step and the post-profile home (name greeting + past-stories
+  shelf) are verified by the on-device integration test, which enters text via
+  `tester.enterText` (synthetic keyboard input isn't forwarded to the simulator).
 
 Note: `flutter run` (a debugger attachment) is required for the debug build to
 render on the simulator — a standalone `simctl launch` of a debug `.app` shows a
