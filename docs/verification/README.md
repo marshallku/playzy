@@ -39,6 +39,22 @@ The `integration_test` version of the journey adds device-robust scrolling
 (`scrollUntilVisible`) so it drives the flow on a real tall device, not just the
 default test window.
 
+### Live interaction on the simulator
+
+Beyond the automated test, the running app was driven by real synthetic taps
+(Quartz window-frame lookup + `cliclick`, screenshots via `simctl`):
+
+- [ios/ios-01-home.png](ios/ios-01-home.png) — the app running on iPhone 17.
+- [ios/ios-02-profile.png](ios/ios-02-profile.png) — reached by **tapping** the
+  home CTA; the age-band and interest (공룡) chips respond to taps too.
+
+Note: `flutter run` (a debugger attachment) is required for the debug build to
+render on the simulator — a standalone `simctl launch` of a debug `.app` shows a
+white screen. Text entry via synthetic keyboard events isn't forwarded to the
+simulated device, so name-entry-dependent later screens (picker → reader) are
+covered by the on-device integration test and the identical-code web captures
+above rather than re-shot here.
+
 ## Manual e2e — the app actually running, captured
 
 The `flutter build web` output was served and driven through the whole user
