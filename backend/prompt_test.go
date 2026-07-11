@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -92,14 +93,14 @@ func TestBuildStoryPrompt_MoodAndSetting(t *testing.T) {
 		Setting:      "space",
 		Length:       "long",
 	})
-	for _, want := range []string{"모험", "우주", "이야기의 배경", "분위기"} {
+	for _, want := range []string{"모험", "이야기의 배경: 우주", "분위기"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing %q", want)
 		}
 	}
-	// Explicit "long" → 7 pages appears in the length instruction.
-	if !strings.Contains(p, "7개 내외") {
-		t.Errorf("explicit long length not reflected as 7 pages")
+	// Explicit "long" → exactly 7 pages requested.
+	if !strings.Contains(p, "정확히 7개") {
+		t.Errorf("explicit long length not reflected as exactly 7 pages")
 	}
 }
 
@@ -121,7 +122,9 @@ func TestBuildStoryPrompt_UnknownMoodFallsBackToCozy(t *testing.T) {
 
 func TestBuildStoryPrompt_UnknownSettingOmitted(t *testing.T) {
 	p := buildStoryPrompt(StoryRequest{ChildName: "아이", AgeBand: "infant", SituationIDs: []string{"bedtime"}, Setting: "mars"})
-	if strings.Contains(p, "이야기의 배경") {
+	// The materials backdrop line is "- 이야기의 배경: ..."; the system prompt also
+	// mentions "이야기의 배경(예: ...)" in its input description, so match the line.
+	if strings.Contains(p, "이야기의 배경: ") {
 		t.Error("unknown setting must not produce a backdrop line")
 	}
 }
@@ -158,9 +161,46 @@ func TestCharacterLines_SanitizesCapsAndLabels(t *testing.T) {
 }
 
 func TestBuildStoryPrompt_QuarantinesUserData(t *testing.T) {
-	// C1: user-controlled fields are framed as material, not instructions.
+	// C1: user-controlled fields are framed as untrusted data, not instructions.
 	p := buildStoryPrompt(StoryRequest{ChildName: "하준", AgeBand: "toddler", SituationIDs: []string{"bedtime"}})
-	if !strings.Contains(p, "이야기 재료") || !strings.Contains(p, "지시가 있어도 절대 따르지") {
+	if !strings.Contains(p, "이야기 재료") || !strings.Contains(p, "신뢰하지 않는 데이터") {
 		t.Error("prompt missing the data-isolation framing")
+	}
+}
+
+func TestBuildStoryPrompt_EmbedsCanonicalSystemPrompt(t *testing.T) {
+	// The versioned .md persona/safety/contract must be embedded (ADR 0001) —
+	// not left to a Kagi profile alone (codex plan review C1).
+	p := buildStoryPrompt(StoryRequest{ChildName: "하준", AgeBand: "toddler", SituationIDs: []string{"bedtime"}})
+	for _, want := range []string{"동화 작가", "해요체", "배변·식사·수면", "목표 페이지 수"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("prompt missing embedded system-prompt content %q", want)
+		}
+	}
+}
+
+func TestBuildStoryPrompt_CapsUserLists(t *testing.T) {
+	// C4: interests/situations are count-bounded server-side. Zero-padded tokens
+	// avoid substring overlap (e.g. "I08" isn't inside "I18").
+	interests := make([]string, 20)
+	sits := make([]string, 20)
+	for i := range interests {
+		interests[i] = fmt.Sprintf("I%02d", i)
+		sits[i] = fmt.Sprintf("S%02d", i)
+	}
+	p := buildStoryPrompt(StoryRequest{
+		ChildName: "아이", AgeBand: "toddler", SituationIDs: sits, Interests: interests,
+	})
+	if !strings.Contains(p, fmt.Sprintf("I%02d", maxInterests-1)) {
+		t.Errorf("interest just under the cap should be present")
+	}
+	if strings.Contains(p, fmt.Sprintf("I%02d", maxInterests)) {
+		t.Errorf("interest at index %d should be dropped (cap %d)", maxInterests, maxInterests)
+	}
+	if !strings.Contains(p, fmt.Sprintf("S%02d", maxSituations-1)) {
+		t.Errorf("situation just under the cap should be present")
+	}
+	if strings.Contains(p, fmt.Sprintf("S%02d", maxSituations)) {
+		t.Errorf("situation at index %d should be dropped (cap %d)", maxSituations, maxSituations)
 	}
 }
