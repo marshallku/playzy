@@ -27,14 +27,27 @@ type config struct {
 	// endpoints are disabled entirely. In production the verified-purchase
 	// webhook presents this token; it is never known to app clients.
 	adminToken string
+	// kagiModel pins the base model so generations are deterministic across
+	// host config changes (codex plan review C2). Ignored when kagiProfileID is
+	// set (a profile carries its own model).
+	kagiModel string
+	// kagiProfileID optionally routes through a named Kagi custom assistant
+	// (which pins that assistant's own base model). NOTE: the current `kagi
+	// serve` path sends personalization=true per message, so a profile's
+	// no-personalize setting is NOT honored here — disabling it would need a
+	// kagi change. Empty → send the base model. Account-specific, so it has no
+	// committed default; set KAGI_PROFILE_ID to enable.
+	kagiProfileID string
 }
 
 func loadConfig() config {
 	return config{
-		addr:       envOr("PLAYZY_ADDR", ":8080"),
-		kagiURL:    envOr("KAGI_SERVE_URL", "http://127.0.0.1:8921"),
-		timeout:    120 * time.Second,
-		adminToken: os.Getenv("PLAYZY_ADMIN_TOKEN"),
+		addr:          envOr("PLAYZY_ADDR", ":8080"),
+		kagiURL:       envOr("KAGI_SERVE_URL", "http://127.0.0.1:8921"),
+		timeout:       120 * time.Second,
+		adminToken:    os.Getenv("PLAYZY_ADMIN_TOKEN"),
+		kagiModel:     envOr("KAGI_MODEL", "claude-5-sonnet"),
+		kagiProfileID: os.Getenv("KAGI_PROFILE_ID"),
 	}
 }
 
@@ -173,7 +186,18 @@ func (s *server) handleCatalog(w http.ResponseWriter, _ *http.Request) {
 // callAI is the provider seam. Today it calls `kagi serve`; swap the body to
 // target OpenAI/Anthropic/etc. without touching the rest of the backend.
 func (s *server) callAI(ctx context.Context, prompt string) (string, error) {
-	body, _ := json.Marshal(map[string]any{"prompt": prompt})
+	// Always disable internet (a story needs no web search; keeps output
+	// deterministic) and pin the assistant explicitly rather than relying on
+	// mutable kagi-host defaults (codex plan review C2). A profile pins that
+	// assistant's model; otherwise pin the base model directly. (Personalization
+	// is not controllable via kagi serve yet — see config.kagiProfileID.)
+	payload := map[string]any{"prompt": prompt, "internet_access": false}
+	if s.cfg.kagiProfileID != "" {
+		payload["profile_id"] = s.cfg.kagiProfileID
+	} else {
+		payload["model"] = s.cfg.kagiModel
+	}
+	body, _ := json.Marshal(payload)
 	url := s.cfg.kagiURL + "/chat"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
