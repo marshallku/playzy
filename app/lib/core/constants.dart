@@ -9,4 +9,8 @@ abstract final class AppConstants {
 
   /// Recommended number of situations to pick per story (docs/planning/10).
   static const int maxSituationsPerStory = 3;
+
+  /// Extra characters a story can feature (등장인물). Mirrors the backend cap
+  /// (`maxCharacters`) — the server is the real guard (planning/40).
+  static const int maxCharactersPerStory = 5;
 }

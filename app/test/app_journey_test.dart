@@ -43,9 +43,21 @@ void main() {
     await tester.tap(find.text('오늘의 동화 만들기'));
     await tester.pumpAndSettle();
 
-    // 4) Situation picker → choose a situation, then generate.
+    // 4) Situation picker → choose a situation, then continue to options.
     expect(find.text('오늘의 이야기'), findsOneWidget);
     await tester.tap(find.text('🌙 잠자기'));
+    await tester.pump();
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    // 4b) Story options (planning/40) → add a character, pick a length, generate.
+    expect(find.text('이야기 꾸미기'), findsOneWidget);
+    await tester.tap(find.text('등장인물 추가'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '뽀삐');
+    await tester.pump();
+    await tester.ensureVisible(find.text('짧게'));
+    await tester.tap(find.text('짧게'));
     await tester.pump();
     await tester.tap(find.text('동화 만들기'));
     await tester.pumpAndSettle();

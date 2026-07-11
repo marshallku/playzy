@@ -7,7 +7,6 @@ import '../../core/providers.dart';
 import '../../core/router.dart';
 import '../../design/theme.dart';
 import '../../design/widgets/primary_button.dart';
-import '../../domain/story.dart';
 import '../../sdui/sdui_models.dart';
 import '../../sdui/sdui_renderer.dart';
 
@@ -34,24 +33,11 @@ class _SituationPickerScreenState extends ConsumerState<SituationPickerScreen> {
     });
   }
 
-  void _generate() {
-    final profile = ref.read(profileControllerProvider).valueOrNull;
-    if (profile == null) {
-      context.go(Routes.profile);
-      return;
-    }
-    if (!ref.read(canGenerateProvider)) {
-      context.push(Routes.paywall);
-      return;
-    }
-    final request = StoryRequest(
-      childName: profile.name,
-      ageBand: profile.ageBand.name,
-      situationIds: _selected.toList(),
-      interests: profile.interests,
-      companionName: profile.companionName,
-    );
-    context.push(Routes.generating, extra: request);
+  void _next() {
+    if (_selected.isEmpty) return;
+    // Carry the picked situations to the options step, which builds the enriched
+    // request (characters/mood/length/setting — planning/40).
+    context.push(Routes.options, extra: _selected.toList());
   }
 
   @override
@@ -95,8 +81,8 @@ class _SituationPickerScreenState extends ConsumerState<SituationPickerScreen> {
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   PrimaryButton(
-                    label: '동화 만들기',
-                    onPressed: _selected.isEmpty ? null : _generate,
+                    label: '다음',
+                    onPressed: _selected.isEmpty ? null : _next,
                   ),
                 ],
               ),

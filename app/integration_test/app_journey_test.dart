@@ -55,6 +55,25 @@ void main() {
 
     await tester.tap(find.text('🌙 잠자기'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('다음'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    // Story options (planning/40): add a character, pick a length, then generate.
+    expect(find.text('이야기 꾸미기'), findsOneWidget);
+    await Future<void>.delayed(hold); // capture options screen
+    await tester.tap(find.text('등장인물 추가'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '뽀삐');
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('짧게'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('짧게'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('동화 만들기'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('동화 만들기'));
