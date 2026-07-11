@@ -79,6 +79,9 @@ type server struct {
 const deviceHeader = "X-Device-Id"
 
 func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
+	// Bound the request body so a crafted payload (e.g. a huge character list)
+	// can't exhaust memory before validation (planning/40, C1).
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 	var req StoryRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpError(w, http.StatusBadRequest, "invalid request body")

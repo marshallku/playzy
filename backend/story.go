@@ -47,14 +47,26 @@ func containsUnsafe(s string) bool {
 	return false
 }
 
+// Character is an extra named figure to feature beyond the main child (등장인물).
+type Character struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"` // family|friend|animal|imaginary (whitelisted)
+}
+
 // StoryRequest is the provider-agnostic request from the app (ADR 0001). The
-// backend owns the prompt; the app never builds one.
+// backend owns the prompt; the app never builds one. The generation controls
+// (Characters/Mood/Length/Setting, planning/40) are optional and validated
+// server-side — client-side limits are convenience, not the guard.
 type StoryRequest struct {
-	ChildName     string   `json:"childName"`
-	AgeBand       string   `json:"ageBand"`
-	SituationIDs  []string `json:"situationIds"`
-	Interests     []string `json:"interests"`
-	CompanionName string   `json:"companionName,omitempty"`
+	ChildName     string      `json:"childName"`
+	AgeBand       string      `json:"ageBand"`
+	SituationIDs  []string    `json:"situationIds"`
+	Interests     []string    `json:"interests"`
+	CompanionName string      `json:"companionName,omitempty"`
+	Characters    []Character `json:"characters,omitempty"`
+	Mood          string      `json:"mood,omitempty"`
+	Length        string      `json:"length,omitempty"`
+	Setting       string      `json:"setting,omitempty"`
 }
 
 // Story is the structured result the app renders (title + pages).

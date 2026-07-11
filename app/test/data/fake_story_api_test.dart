@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:playzy/data/story/fake_story_api.dart';
 import 'package:playzy/data/story/story_api.dart';
 import 'package:playzy/domain/story.dart';
+import 'package:playzy/domain/story_options.dart';
 
 void main() {
   group('FakeStoryApi', () {
@@ -38,6 +39,28 @@ void main() {
         companionName: '누나',
       ));
       expect(story.pages.any((p) => p.text.contains('누나')), isTrue);
+    });
+
+    test('reflects requested characters in the pages (planning/40)', () async {
+      final story = await api.generateStory(const StoryRequest(
+        childName: '하준',
+        ageBand: 'toddler',
+        situationIds: ['forest'],
+        characters: [StoryCharacter(name: '뽀삐', kind: CharacterKind.animal)],
+      ));
+      expect(story.pages.any((p) => p.text.contains('뽀삐')), isTrue);
+    });
+
+    test('different options yield a distinct story id (varied, not same-y)', () async {
+      const base = StoryRequest(childName: '하준', ageBand: 'toddler', situationIds: ['bedtime']);
+      final cozy = await api.generateStory(base);
+      final adventurous = await api.generateStory(const StoryRequest(
+        childName: '하준',
+        ageBand: 'toddler',
+        situationIds: ['bedtime'],
+        mood: StoryMood.adventurous,
+      ));
+      expect(cozy.id, isNot(adventurous.id));
     });
   });
 }

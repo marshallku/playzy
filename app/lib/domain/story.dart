@@ -1,3 +1,5 @@
+import 'story_options.dart';
+
 /// A generated story, structured as title + pages so the reader can paginate
 /// (docs/planning/10). Text-only for MVP (D3); [imageUrl] is reserved for the
 /// illustration fast-follow.
@@ -64,6 +66,8 @@ class StoryPage {
 
 /// The provider-agnostic request the app sends to the Playzy story API
 /// (ADR 0001). The backend turns this into a prompt; the app never builds one.
+/// The generation controls ([characters]/[mood]/[length]/[setting], planning/40)
+/// are additive with safe defaults so older callers keep working.
 class StoryRequest {
   const StoryRequest({
     required this.childName,
@@ -71,6 +75,10 @@ class StoryRequest {
     required this.situationIds,
     this.interests = const [],
     this.companionName,
+    this.characters = const [],
+    this.mood = StoryMood.cozy,
+    this.length,
+    this.setting,
   });
 
   final String childName;
@@ -79,12 +87,28 @@ class StoryRequest {
   final List<String> interests;
   final String? companionName;
 
+  /// Extra named characters to feature (등장인물).
+  final List<StoryCharacter> characters;
+  final StoryMood mood;
+
+  /// Explicit length override; **null = use the age-band default** (planning/40,
+  /// C2). Omitted from the wire when null so the backend keeps age-appropriate
+  /// length for callers that don't choose one.
+  final StoryLength? length;
+
+  /// Optional backdrop; null lets the backend/AI choose (planning/40).
+  final StorySetting? setting;
+
   Map<String, dynamic> toJson() => {
         'childName': childName,
         'ageBand': ageBand,
         'situationIds': situationIds,
         'interests': interests,
         if (companionName != null) 'companionName': companionName,
+        'characters': characters.map((c) => c.toJson()).toList(),
+        'mood': mood.name,
+        if (length != null) 'length': length!.name,
+        if (setting != null) 'setting': setting!.name,
       };
 
   factory StoryRequest.fromJson(Map<String, dynamic> json) {
@@ -97,6 +121,12 @@ class StoryRequest {
           .map((e) => e as String)
           .toList(),
       companionName: json['companionName'] as String?,
+      characters: (json['characters'] as List<dynamic>? ?? const [])
+          .map((e) => StoryCharacter.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      mood: enumByName(StoryMood.values, json['mood'] as String?, StoryMood.cozy),
+      length: enumByNameOrNull(StoryLength.values, json['length'] as String?),
+      setting: enumByNameOrNull(StorySetting.values, json['setting'] as String?),
     );
   }
 }
