@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/catalog/catalog_api.dart';
 import '../data/catalog/http_catalog_api.dart';
+import '../data/library/story_library.dart';
 import '../data/payment/fake_payment_gateway.dart';
 import '../data/payment/payment_gateway.dart';
 import '../data/profile/profile_repository.dart';
@@ -35,6 +36,17 @@ final deviceIdProvider = Provider<String>(
 final profileRepositoryProvider = Provider<ProfileRepository>(
   (ref) => PrefsProfileRepository(ref.watch(sharedPreferencesProvider)),
 );
+
+/// Local library of generated stories (planning/40). Backed by prefs; tests
+/// override with a fake.
+final storyLibraryProvider = Provider<StoryLibrary>(
+  (ref) => PrefsStoryLibrary(ref.watch(sharedPreferencesProvider)),
+);
+
+/// Recent stories, most-recent-first, for the home library section. Refreshed
+/// after each successful generation.
+final recentStoriesProvider =
+    FutureProvider<List<Story>>((ref) => ref.watch(storyLibraryProvider).recent());
 
 // Real backend when configured (--dart-define=PLAYZY_API_BASE_URL), else the
 // fake so the app runs with no server (ADR 0001).
@@ -202,6 +214,9 @@ class StoryController extends AsyncNotifier<Story?> {
       final story = ref.read(quotaApiProvider) != null
           ? await _generateViaBackend(request)
           : await _generateLocal(request);
+      // Persist AFTER a successful generation, best-effort: a library-save
+      // failure must never fail generation or re-charge quota (ADR 0002 / C3).
+      await _saveToLibrary(story);
       state = AsyncData(story);
       return story;
     } catch (e, st) {
@@ -221,6 +236,18 @@ class StoryController extends AsyncNotifier<Story?> {
       return await ref.read(storyApiProvider).generateStory(request);
     } finally {
       ref.invalidate(quotaStateProvider);
+    }
+  }
+
+  /// Best-effort persistence to the local library. Swallows failures (incl. a
+  /// missing store) so a save error can't fail an already-successful, already-
+  /// charged generation — the story is still returned/shown (C3).
+  Future<void> _saveToLibrary(Story story) async {
+    try {
+      await ref.read(storyLibraryProvider).save(story);
+      ref.invalidate(recentStoriesProvider);
+    } catch (_) {
+      // Story stays visible in the reader; it just may not join the library.
     }
   }
 
