@@ -16,9 +16,13 @@ import (
 //go:embed prompts/story_author_system.md
 var storyAuthorSystem string
 
-// maxFieldRunes bounds user-controlled prompt fields (in runes, so multibyte
-// Korean text isn't split mid-character).
+// maxFieldRunes bounds short user-controlled prompt fields — names, interests
+// (in runes, so multibyte Korean text isn't split mid-character).
 const maxFieldRunes = 40
+
+// maxTopicRunes bounds the free-text story seed (오늘의 이야기). It's a sentence,
+// not a label, so it gets a larger cap than the short fields.
+const maxTopicRunes = 120
 
 // Count caps on user-derived lists so a crafted request can't flood the prompt
 // (codex plan review C4). The app caps lower; the server is the real guard.
@@ -27,11 +31,11 @@ const (
 	maxSituations = 6
 )
 
-// sanitize reduces the prompt-injection surface of user-controlled fields: it
-// strips control characters and newlines (so a value can't break out of its
-// line and inject instructions) and caps length. This is a mitigation, not a
-// substitute for the deferred output-moderation pass (see README).
-func sanitize(s string) string {
+// sanitizeCapped reduces the prompt-injection surface of user-controlled fields:
+// it strips control characters and newlines (so a value can't break out of its
+// line and inject instructions) and caps length to max runes. This is a
+// mitigation, not a substitute for the deferred output-moderation pass (README).
+func sanitizeCapped(s string, max int) string {
 	s = strings.Map(func(r rune) rune {
 		if r == '\n' || r == '\r' || r == '\t' || unicode.IsControl(r) {
 			return ' '
@@ -39,11 +43,17 @@ func sanitize(s string) string {
 		return r
 	}, s)
 	s = strings.TrimSpace(s)
-	if r := []rune(s); len(r) > maxFieldRunes {
-		s = strings.TrimSpace(string(r[:maxFieldRunes]))
+	if r := []rune(s); len(r) > max {
+		s = strings.TrimSpace(string(r[:max]))
 	}
 	return s
 }
+
+// sanitize is the short-field cap (names, interests, situation labels).
+func sanitize(s string) string { return sanitizeCapped(s, maxFieldRunes) }
+
+// sanitizeTopic is the free-text story-seed cap — same isolation, longer bound.
+func sanitizeTopic(s string) string { return sanitizeCapped(s, maxTopicRunes) }
 
 // maxCharacters caps how many extra characters a story can feature — enforced
 // server-side so a crafted request can't stuff the prompt (planning/40, C1).
@@ -220,9 +230,14 @@ func buildStoryMaterials(req StoryRequest) string {
 	// once in the system prompt). [이야기 재료] is user-derived (untrusted,
 	// quarantined by the system prompt); [오늘의 설정] is backend-derived selections
 	// (trusted labels the system prompt defines).
+	topic := sanitizeTopic(req.Topic)
+
 	var b strings.Builder
 	b.WriteString("[이야기 재료]\n")
 	b.WriteString(fmt.Sprintf("- 주인공 아이: %s\n", name))
+	if topic != "" {
+		b.WriteString(fmt.Sprintf("- 오늘의 이야기: %s\n", topic))
+	}
 	if len(interests) > 0 {
 		b.WriteString(fmt.Sprintf("- 좋아하는 것: %s\n", strings.Join(interests, ", ")))
 	}

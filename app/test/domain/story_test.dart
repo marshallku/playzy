@@ -97,6 +97,35 @@ void main() {
       expect(decoded.setting, StorySetting.space);
     });
 
+    test('serializes topic when present; omits when null/blank', () {
+      const withTopic = StoryRequest(
+        childName: '하준',
+        ageBand: 'toddler',
+        situationIds: [],
+        topic: '오늘 이가 났어요',
+      );
+      expect(withTopic.toJson()['topic'], '오늘 이가 났어요');
+      expect(StoryRequest.fromJson(withTopic.toJson()).topic, '오늘 이가 났어요');
+
+      const blankTopic = StoryRequest(
+        childName: '하준',
+        ageBand: 'toddler',
+        situationIds: ['bedtime'],
+        topic: '   ',
+      );
+      expect(blankTopic.toJson().containsKey('topic'), isFalse);
+    });
+
+    test('tolerates missing situationIds (topic-only request)', () {
+      final decoded = StoryRequest.fromJson({
+        'childName': '하준',
+        'ageBand': 'toddler',
+        'topic': '오늘 이야기',
+      });
+      expect(decoded.situationIds, isEmpty);
+      expect(decoded.topic, '오늘 이야기');
+    });
+
     test('tolerates unknown enum names → falls back rather than throwing', () {
       final decoded = StoryRequest.fromJson({
         'childName': '하준',

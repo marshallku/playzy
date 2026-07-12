@@ -73,6 +73,7 @@ class StoryRequest {
     required this.childName,
     required this.ageBand,
     required this.situationIds,
+    this.topic,
     this.interests = const [],
     this.companionName,
     this.characters = const [],
@@ -84,6 +85,11 @@ class StoryRequest {
   final String childName;
   final String ageBand;
   final List<String> situationIds;
+
+  /// Free-text seed for tonight's story ("오늘의 이야기"). Optional — the backend
+  /// accepts a request with a topic OR at least one situation. Omitted from the
+  /// wire when null/empty.
+  final String? topic;
   final List<String> interests;
   final String? companionName;
 
@@ -103,6 +109,7 @@ class StoryRequest {
         'childName': childName,
         'ageBand': ageBand,
         'situationIds': situationIds,
+        if (topic != null && topic!.trim().isNotEmpty) 'topic': topic!.trim(),
         'interests': interests,
         if (companionName != null) 'companionName': companionName,
         'characters': characters.map((c) => c.toJson()).toList(),
@@ -116,7 +123,8 @@ class StoryRequest {
       childName: json['childName'] as String,
       ageBand: json['ageBand'] as String,
       situationIds:
-          (json['situationIds'] as List<dynamic>).map((e) => e as String).toList(),
+          (json['situationIds'] as List<dynamic>? ?? const []).map((e) => e as String).toList(),
+      topic: json['topic'] as String?,
       interests: (json['interests'] as List<dynamic>? ?? const [])
           .map((e) => e as String)
           .toList(),

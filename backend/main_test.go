@@ -142,6 +142,36 @@ func TestCallAI_UsesProfileWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestHandleStories_TopicOnlyIsValid(t *testing.T) {
+	// A free-text seed with no situation chips is a complete request now (the app
+	// offers both; either satisfies validation).
+	kagi := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"md": `{"title":"t","pages":[{"text":"p"}]}`,
+		})
+	}))
+	defer kagi.Close()
+	srv := newTestServer(kagi.URL)
+	req := storyRequest(`{"childName":"하준","ageBand":"toddler","topic":"오늘 이가 났어요"}`, "dev1")
+	rec := httptest.NewRecorder()
+	srv.handleStories(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleStories_WhitespaceTopicNoSituationIs400(t *testing.T) {
+	// A control/whitespace-only topic must NOT satisfy validation (C3) — it would
+	// consume quota while contributing no material.
+	srv := newTestServer("http://unused")
+	req := storyRequest(`{"childName":"하준","ageBand":"toddler","topic":"  \n\t "}`, "dev1")
+	rec := httptest.NewRecorder()
+	srv.handleStories(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 for whitespace-only topic with no situation", rec.Code)
+	}
+}
+
 func TestHandleStories_ValidatesRequest(t *testing.T) {
 	srv := newTestServer("http://unused")
 	req := storyRequest(`{"childName":""}`, "dev1")

@@ -67,6 +67,10 @@ type StoryRequest struct {
 	Mood          string      `json:"mood,omitempty"`
 	Length        string      `json:"length,omitempty"`
 	Setting       string      `json:"setting,omitempty"`
+	// Topic is a free-text seed for tonight's story ("오늘의 이야기"). User-derived
+	// and untrusted — sanitized like the other fields. A request is valid with a
+	// topic OR at least one situationId (the app offers both).
+	Topic string `json:"topic,omitempty"`
 }
 
 // Story is the structured result the app renders (title + pages).

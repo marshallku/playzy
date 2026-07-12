@@ -106,8 +106,12 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 	}
 	req.ChildName = strings.TrimSpace(req.ChildName)
 	req.SituationIDs = nonEmpty(req.SituationIDs)
-	if req.ChildName == "" || len(req.SituationIDs) == 0 {
-		httpError(w, http.StatusBadRequest, "childName and at least one situationId are required")
+	// Normalize the free-text seed BEFORE validating so a whitespace/control-only
+	// topic can't satisfy the check yet contribute no material (C3). The prompt
+	// builder re-sanitizes, so the stored value stays the normalized one.
+	req.Topic = sanitizeTopic(req.Topic)
+	if req.ChildName == "" || (len(req.SituationIDs) == 0 && req.Topic == "") {
+		httpError(w, http.StatusBadRequest, "childName and either a topic or at least one situationId are required")
 		return
 	}
 

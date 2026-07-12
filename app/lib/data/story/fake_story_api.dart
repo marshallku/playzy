@@ -16,15 +16,21 @@ class FakeStoryApi implements StoryApi {
     if (delay > Duration.zero) await Future<void>.delayed(delay);
 
     final name = request.childName.trim().isEmpty ? '아이' : request.childName.trim();
-    final theme = request.situationIds.isEmpty ? '모험' : request.situationIds.first;
+    final topic = request.topic?.trim();
+    // The free-text seed is the story's subject when given; else a picked
+    // situation; else a generic adventure.
+    final theme = (topic != null && topic.isNotEmpty)
+        ? topic
+        : (request.situationIds.isEmpty ? '모험' : request.situationIds.first);
     final companion = request.companionName;
     final mood = request.mood.label; // 포근한, 신나는, …
     final setting = request.setting; // may be null
 
-    // Id folds in EVERY option (mood/length/setting/characters incl. kind) so any
-    // varied choice yields a distinct story, while an identical request stays
-    // stable for deterministic tests (planning/40, C2).
+    // Id folds in EVERY option (topic/mood/length/setting/characters incl. kind)
+    // so any varied choice yields a distinct story, while an identical request
+    // stays stable for deterministic tests (planning/40, C2).
     final optionKey = [
+      topic ?? '',
       request.mood.name,
       request.length?.name ?? 'age',
       setting?.name ?? 'any',
@@ -39,6 +45,8 @@ class FakeStoryApi implements StoryApi {
           StoryPage(text: '$mood ${setting.label}에서 이야기가 시작돼요.')
         else
           StoryPage(text: '옛날 옛적, $name(이)가 살고 있었어요.'),
+        if (topic != null && topic.isNotEmpty)
+          StoryPage(text: '오늘은 "$topic" 이야기를 들려줄게요.'),
         if (companion != null) StoryPage(text: '$name는 $companion와(과) 함께 길을 나섰어요.'),
         // Reflect the chosen characters so the demo isn't flat (planning/40).
         for (final c in request.characters)
