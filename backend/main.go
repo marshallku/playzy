@@ -32,11 +32,10 @@ type config struct {
 	// set (a profile carries its own model).
 	kagiModel string
 	// kagiProfileID optionally routes through a named Kagi custom assistant
-	// (which pins that assistant's own base model). NOTE: the current `kagi
-	// serve` path sends personalization=true per message, so a profile's
-	// no-personalize setting is NOT honored here — disabling it would need a
-	// kagi change. Empty → send the base model. Account-specific, so it has no
-	// committed default; set KAGI_PROFILE_ID to enable.
+	// (which pins that assistant's own base model). Personalization is disabled
+	// explicitly on every call (see callAI), independent of the profile. Empty →
+	// send the base model. Account-specific, so it has no committed default; set
+	// KAGI_PROFILE_ID to enable.
 	kagiProfileID string
 }
 
@@ -186,12 +185,16 @@ func (s *server) handleCatalog(w http.ResponseWriter, _ *http.Request) {
 // callAI is the provider seam. Today it calls `kagi serve`; swap the body to
 // target OpenAI/Anthropic/etc. without touching the rest of the backend.
 func (s *server) callAI(ctx context.Context, prompt string) (string, error) {
-	// Always disable internet (a story needs no web search; keeps output
-	// deterministic) and pin the assistant explicitly rather than relying on
-	// mutable kagi-host defaults (codex plan review C2). A profile pins that
-	// assistant's model; otherwise pin the base model directly. (Personalization
-	// is not controllable via kagi serve yet — see config.kagiProfileID.)
-	payload := map[string]any{"prompt": prompt, "internet_access": false}
+	// Always disable internet + personalization: a story needs no web search and
+	// must not leak the account's personal context, and it keeps output
+	// deterministic. Pin the assistant explicitly rather than relying on mutable
+	// kagi-host defaults (codex plan review C2). A profile pins that assistant's
+	// model; otherwise pin the base model directly.
+	payload := map[string]any{
+		"prompt":          prompt,
+		"internet_access": false,
+		"personalization": false,
+	}
 	if s.cfg.kagiProfileID != "" {
 		payload["profile_id"] = s.cfg.kagiProfileID
 	} else {

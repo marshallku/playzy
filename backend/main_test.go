@@ -93,6 +93,9 @@ func TestCallAI_PinsModelAndDisablesInternet(t *testing.T) {
 	if got["model"] != "claude-5-sonnet" {
 		t.Errorf("model = %v, want claude-5-sonnet", got["model"])
 	}
+	if got["personalization"] != false {
+		t.Errorf("personalization = %v, want false", got["personalization"])
+	}
 	if _, ok := got["profile_id"]; ok {
 		t.Errorf("profile_id must be absent when unconfigured")
 	}
@@ -120,6 +123,9 @@ func TestCallAI_UsesProfileWhenConfigured(t *testing.T) {
 	}
 	if got["internet_access"] != false {
 		t.Errorf("internet_access = %v, want false", got["internet_access"])
+	}
+	if got["personalization"] != false {
+		t.Errorf("personalization = %v, want false", got["personalization"])
 	}
 }
 
