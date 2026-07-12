@@ -135,7 +135,9 @@ class RosterController extends AsyncNotifier<List<StoryCharacter>> {
   Future<void> add(StoryCharacter character) => _enqueue(() async {
         final name = character.name.trim();
         if (name.isEmpty) return;
-        final current = state.valueOrNull ?? const <StoryCharacter>[];
+        // Await the initial load so an add fired before loadRoster() resolves
+        // can't persist [new] over the real roster (codex WU4 C1).
+        final current = await future;
         final duplicate =
             current.any((c) => c.name.trim() == name && c.kind == character.kind);
         if (duplicate || current.length >= AppConstants.maxRosterCharacters) return;
@@ -145,7 +147,7 @@ class RosterController extends AsyncNotifier<List<StoryCharacter>> {
       });
 
   Future<void> remove(StoryCharacter character) => _enqueue(() async {
-        final current = state.valueOrNull ?? const <StoryCharacter>[];
+        final current = await future;
         final next = current
             .where((c) => !(c.name == character.name && c.kind == character.kind))
             .toList();

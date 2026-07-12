@@ -70,23 +70,6 @@ enum StoryLength {
       };
 }
 
-/// Optional backdrop (장소). Null = let the AI choose from the situation/theme.
-enum StorySetting {
-  home,
-  forest,
-  sea,
-  space,
-  town;
-
-  String get label => switch (this) {
-        StorySetting.home => '집',
-        StorySetting.forest => '숲속',
-        StorySetting.sea => '바닷속',
-        StorySetting.space => '우주',
-        StorySetting.town => '마을',
-      };
-}
-
 /// Case-tolerant enum lookup by [Enum.name] — an unknown/legacy name yields the
 /// fallback rather than throwing, so old persisted or malformed data still loads.
 T enumByName<T extends Enum>(List<T> values, String? name, T fallback) {

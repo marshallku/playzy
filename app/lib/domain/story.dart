@@ -66,8 +66,8 @@ class StoryPage {
 
 /// The provider-agnostic request the app sends to the Playzy story API
 /// (ADR 0001). The backend turns this into a prompt; the app never builds one.
-/// The generation controls ([characters]/[mood]/[length]/[setting], planning/40)
-/// are additive with safe defaults so older callers keep working.
+/// The generation controls ([characters]/[mood]/[length], planning/40) are
+/// additive with safe defaults so older callers keep working.
 class StoryRequest {
   const StoryRequest({
     required this.childName,
@@ -79,7 +79,6 @@ class StoryRequest {
     this.characters = const [],
     this.mood = StoryMood.cozy,
     this.length,
-    this.setting,
   });
 
   final String childName;
@@ -102,9 +101,6 @@ class StoryRequest {
   /// length for callers that don't choose one.
   final StoryLength? length;
 
-  /// Optional backdrop; null lets the backend/AI choose (planning/40).
-  final StorySetting? setting;
-
   Map<String, dynamic> toJson() => {
         'childName': childName,
         'ageBand': ageBand,
@@ -115,7 +111,6 @@ class StoryRequest {
         'characters': characters.map((c) => c.toJson()).toList(),
         'mood': mood.name,
         if (length != null) 'length': length!.name,
-        if (setting != null) 'setting': setting!.name,
       };
 
   factory StoryRequest.fromJson(Map<String, dynamic> json) {
@@ -134,7 +129,6 @@ class StoryRequest {
           .toList(),
       mood: enumByName(StoryMood.values, json['mood'] as String?, StoryMood.cozy),
       length: enumByNameOrNull(StoryLength.values, json['length'] as String?),
-      setting: enumByNameOrNull(StorySetting.values, json['setting'] as String?),
     );
   }
 }

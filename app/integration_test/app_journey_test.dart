@@ -33,7 +33,8 @@ void main() {
     await tester.pumpAndSettle();
     await Future<void>.delayed(hold); // capture profile form
 
-    await tester.enterText(find.byType(TextFormField).first, '하준');
+    // Field order: 성(family) first, 이름(given) second — enter the given name.
+    await tester.enterText(find.byType(TextFormField).at(1), '하준');
     await tester.tap(find.text('공룡'));
     await tester.pumpAndSettle();
     // The form is a lazy ListView — on a real device the save button may be
@@ -50,30 +51,35 @@ void main() {
 
     await tester.tap(find.text('오늘의 동화 만들기'));
     await tester.pumpAndSettle();
-    expect(find.text('오늘의 이야기'), findsOneWidget);
-    await Future<void>.delayed(hold); // capture SDUI picker
 
+    // Funnel 1/3 (topic): type a seed AND pick a chip (both are kept), continue.
+    expect(find.text('오늘은 어떤 이야기를 들려줄까요?'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '오늘 이가 새로 났어요');
+    await tester.pumpAndSettle();
     await tester.tap(find.text('🌙 잠자기'));
     await tester.pumpAndSettle();
+    await Future<void>.delayed(hold); // capture topic step
     await tester.ensureVisible(find.text('다음'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // Story options (planning/40): add a character, pick a length, then generate.
-    expect(find.text('이야기 꾸미기'), findsOneWidget);
-    await Future<void>.delayed(hold); // capture options screen
-    await tester.tap(find.text('등장인물 추가'));
+    // Funnel 2/3 (cast): add a new character (saved to roster + selected).
+    expect(find.text('함께할 친구를 골라요'), findsOneWidget);
+    await tester.tap(find.text('새 인물 추가'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '뽀삐');
+    await tester.tap(find.text('추가'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('짧게'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await Future<void>.delayed(hold); // capture cast step
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    // Funnel 3/3 (tone): pick a length, then generate.
+    expect(find.text('어떤 분위기로 들려줄까요?'), findsOneWidget);
+    await tester.ensureVisible(find.text('짧게'));
     await tester.tap(find.text('짧게'));
     await tester.pumpAndSettle();
+    await Future<void>.delayed(hold); // capture tone step
     await tester.ensureVisible(find.text('동화 만들기'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('동화 만들기'));

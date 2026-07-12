@@ -64,20 +64,18 @@ void main() {
       expect(decoded.companionName, '아빠');
     });
 
-    test('defaults: cozy mood, no explicit length/characters/setting', () {
+    test('defaults: cozy mood, no explicit length/characters', () {
       const req = StoryRequest(childName: '하준', ageBand: 'toddler', situationIds: ['bedtime']);
       expect(req.mood, StoryMood.cozy);
       expect(req.length, isNull); // null = age-band default (C2 backward compat)
       expect(req.characters, isEmpty);
-      expect(req.setting, isNull);
       final json = req.toJson();
       expect(json['mood'], 'cozy');
       // length omitted when unset so the backend keeps the age-appropriate count.
       expect(json.containsKey('length'), isFalse);
-      expect(json.containsKey('setting'), isFalse);
     });
 
-    test('round-trips characters, mood, length, setting (planning/40)', () {
+    test('round-trips characters, mood, length (planning/40)', () {
       const req = StoryRequest(
         childName: '하준',
         ageBand: 'toddler',
@@ -88,13 +86,11 @@ void main() {
         ],
         mood: StoryMood.adventurous,
         length: StoryLength.long,
-        setting: StorySetting.space,
       );
       final decoded = StoryRequest.fromJson(req.toJson());
       expect(decoded.characters, req.characters);
       expect(decoded.mood, StoryMood.adventurous);
       expect(decoded.length, StoryLength.long);
-      expect(decoded.setting, StorySetting.space);
     });
 
     test('serializes topic when present; omits when null/blank', () {
@@ -133,14 +129,12 @@ void main() {
         'situationIds': ['bedtime'],
         'mood': 'nonsense',
         'length': 'huge',
-        'setting': 'mars',
         'characters': [
           {'name': '지우', 'kind': 'hacker'},
         ],
       });
       expect(decoded.mood, StoryMood.cozy);
       expect(decoded.length, isNull); // unknown length → null (age default)
-      expect(decoded.setting, isNull);
       expect(decoded.characters.single.kind, CharacterKind.friend);
     });
   });

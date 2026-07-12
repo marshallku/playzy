@@ -3,12 +3,13 @@ import 'package:go_router/go_router.dart';
 
 import '../domain/story.dart';
 import '../features/child_profile/child_profile_screen.dart';
+import '../features/create/create_cast_screen.dart';
+import '../features/create/create_tone_screen.dart';
+import '../features/create/create_topic_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/paywall/paywall_screen.dart';
 import '../features/roster/roster_screen.dart';
-import '../features/situation_picker/situation_picker_screen.dart';
 import '../features/story/generating_screen.dart';
-import '../features/story/story_options_screen.dart';
 import '../features/story/story_reader_screen.dart';
 
 /// Route names — referenced by screens instead of raw path strings.
@@ -16,8 +17,11 @@ abstract final class Routes {
   static const home = '/';
   static const profile = '/profile';
   static const roster = '/roster';
-  static const pick = '/pick';
-  static const options = '/options';
+  // The 3-step create funnel (topic → cast → tone). State lives in
+  // storyDraftProvider, so back-swipe between steps preserves choices.
+  static const createTopic = '/create/topic';
+  static const createCast = '/create/cast';
+  static const createTone = '/create/tone';
   static const generating = '/generating';
   static const story = '/story';
   static const paywall = '/paywall';
@@ -38,13 +42,14 @@ GoRouter createAppRouter() => GoRouter(
             path: Routes.roster,
             builder: (_, __) => const RosterScreen()),
         GoRoute(
-            path: Routes.pick,
-            builder: (_, __) => const SituationPickerScreen()),
+            path: Routes.createTopic,
+            builder: (_, __) => const CreateTopicScreen()),
         GoRoute(
-          path: Routes.options,
-          builder: (_, state) =>
-              StoryOptionsScreen(situationIds: state.extra! as List<String>),
-        ),
+            path: Routes.createCast,
+            builder: (_, __) => const CreateCastScreen()),
+        GoRoute(
+            path: Routes.createTone,
+            builder: (_, __) => const CreateToneScreen()),
         GoRoute(
           path: Routes.generating,
           builder: (_, state) =>

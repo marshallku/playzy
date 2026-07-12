@@ -9,6 +9,7 @@ import '../../design/widgets/primary_button.dart';
 import '../../domain/child_profile.dart';
 import '../../domain/quota_state.dart';
 import '../../domain/story.dart';
+import '../create/story_draft.dart';
 
 /// Landing: greet the parent, surface tonight's allowance, offer the generate
 /// CTA, and shelf past stories to re-read (planning/40).
@@ -41,8 +42,16 @@ class HomeScreen extends ConsumerWidget {
               ],
               PrimaryButton(
                 label: child != null ? '오늘의 동화 만들기' : '아이 정보 입력하고 시작하기',
-                onPressed: () =>
-                    context.push(child != null ? Routes.pick : Routes.profile),
+                onPressed: () {
+                  if (child == null) {
+                    context.push(Routes.profile);
+                    return;
+                  }
+                  // The ONE reset point (fresh entry): start every story from a
+                  // clean draft, so a prior run's choices never leak in (C5).
+                  ref.read(storyDraftProvider.notifier).reset();
+                  context.push(Routes.createTopic);
+                },
               ),
               if (child != null)
                 Row(

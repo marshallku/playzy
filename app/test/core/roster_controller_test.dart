@@ -30,6 +30,20 @@ void main() {
       expect(await repo.loadRoster(), roster); // persisted
     });
 
+    test('add before the initial load resolves does not clobber the roster (C1)', () async {
+      final repo = FakeProfileRepository(roster: const [
+        StoryCharacter(name: '이모', kind: CharacterKind.family),
+      ]);
+      final c = containerWith(repo);
+      // Deliberately do NOT await the build future first — add immediately.
+      await c
+          .read(rosterControllerProvider.notifier)
+          .add(const StoryCharacter(name: '뽀삐', kind: CharacterKind.animal));
+      final roster = c.read(rosterControllerProvider).valueOrNull!;
+      expect(roster.map((e) => e.name), ['이모', '뽀삐']); // existing preserved
+      expect(await repo.loadRoster(), roster);
+    });
+
     test('a blank name is ignored', () async {
       final c = containerWith(FakeProfileRepository(roster: const []));
       final ctrl = c.read(rosterControllerProvider.notifier);

@@ -8,8 +8,9 @@ import 'package:playzy/design/tokens/colors.dart';
 import 'package:playzy/features/story/story_reader_screen.dart';
 
 /// End-to-end journey through the REAL app (router + providers + every screen)
-/// on fake backends: onboarding → child profile → situation picker →
-/// generation → bedtime reader. This exercises the whole flow, not one screen.
+/// on fake backends: onboarding → child profile → the 3-step create funnel
+/// (topic → cast → tone) → generation → bedtime reader. This exercises the
+/// whole flow, not one screen.
 void main() {
   testWidgets('parent goes from cold start to a finished story', (tester) async {
     await tester.pumpWidget(
@@ -44,19 +45,26 @@ void main() {
     await tester.tap(find.text('오늘의 동화 만들기'));
     await tester.pumpAndSettle();
 
-    // 4) Situation picker → choose a situation, then continue to options.
-    expect(find.text('오늘의 이야기'), findsOneWidget);
+    // 4) Funnel 1/3 (topic) → pick a situation chip (or type a seed), continue.
+    expect(find.text('오늘은 어떤 이야기를 들려줄까요?'), findsOneWidget);
     await tester.tap(find.text('🌙 잠자기'));
     await tester.pump();
     await tester.tap(find.text('다음'));
     await tester.pumpAndSettle();
 
-    // 4b) Story options (planning/40) → add a character, pick a length, generate.
-    expect(find.text('이야기 꾸미기'), findsOneWidget);
-    await tester.tap(find.text('등장인물 추가'));
+    // 5) Funnel 2/3 (cast) → add a new character (saved to roster + selected).
+    expect(find.text('함께할 친구를 골라요'), findsOneWidget);
+    await tester.tap(find.text('새 인물 추가'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '뽀삐');
-    await tester.pump();
+    await tester.tap(find.text('추가'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('뽀삐'), findsWidgets);
+    await tester.tap(find.text('다음'));
+    await tester.pumpAndSettle();
+
+    // 6) Funnel 3/3 (tone) → pick a length, then generate.
+    expect(find.text('어떤 분위기로 들려줄까요?'), findsOneWidget);
     await tester.ensureVisible(find.text('짧게'));
     await tester.tap(find.text('짧게'));
     await tester.pump();
