@@ -99,6 +99,10 @@ func TestCallAI_PinsModelAndDisablesInternet(t *testing.T) {
 	if _, ok := got["profile_id"]; ok {
 		t.Errorf("profile_id must be absent when unconfigured")
 	}
+	// No profile → the system prompt is delivered inline (self-contained).
+	if prompt, _ := got["prompt"].(string); !strings.Contains(prompt, "동화 작가") {
+		t.Errorf("base-model prompt should embed the system prompt")
+	}
 }
 
 func TestCallAI_UsesProfileWhenConfigured(t *testing.T) {
@@ -126,6 +130,15 @@ func TestCallAI_UsesProfileWhenConfigured(t *testing.T) {
 	}
 	if got["personalization"] != false {
 		t.Errorf("personalization = %v, want false", got["personalization"])
+	}
+	// Profile mode → send ONLY the materials (the profile carries the system
+	// prompt); the durable persona is not re-sent per request.
+	prompt, _ := got["prompt"].(string)
+	if strings.Contains(prompt, "동화 작가") {
+		t.Errorf("profile-mode prompt must not re-send the system prompt")
+	}
+	if !strings.Contains(prompt, "[이야기 재료]") {
+		t.Errorf("profile-mode prompt should still carry the materials")
 	}
 }
 

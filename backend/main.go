@@ -126,7 +126,14 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// In profile mode the Kagi assistant's instructions ARE the system prompt
+	// (created from prompts/story_author_system.md), so send only the materials.
+	// Otherwise send the self-contained prompt (system + materials) so a base
+	// model still works. Either way the .md is the single versioned source.
 	prompt := buildStoryPrompt(req)
+	if s.cfg.kagiProfileID != "" {
+		prompt = buildStoryMaterials(req)
+	}
 	text, err := s.callAI(r.Context(), prompt)
 	if err != nil {
 		s.quota.Refund(deviceID, c)

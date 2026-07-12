@@ -88,20 +88,39 @@ func characterLines(chars []Character) []string {
 	return out
 }
 
-// moodGuidance turns a whitelisted mood into a tone instruction. Unknown/empty
-// defaults to the cozy bedtime tone.
-func moodGuidance(mood string) string {
+// moodLabel maps a whitelisted mood to its Korean label. The tone each label
+// implies is defined once in the system prompt (# 분위기), so the per-request
+// prompt only names the selection. Unknown/empty → the cozy bedtime default.
+func moodLabel(mood string) string {
 	switch mood {
 	case "cheerful":
-		return "밝고 신나는 분위기로, 즐거운 에너지가 느껴지게."
+		return "신나는"
 	case "adventurous":
-		return "설레는 모험의 분위기로, 용기와 발견이 담기게."
+		return "모험적인"
 	case "calm":
-		return "잔잔하고 차분한 분위기로, 마음이 편안해지게."
+		return "잔잔한"
 	case "playful":
-		return "유쾌하고 장난스러운 분위기로, 웃음이 나게."
+		return "유쾌한"
 	default: // "cozy" and anything unknown
-		return "포근하고 안심되는 분위기로, 사랑받는 느낌이 들게."
+		return "포근한"
+	}
+}
+
+// ageBandLabel maps an age band to its Korean label; the system prompt
+// (# 나이대별 표현) defines what each implies, so the per-request prompt only
+// names the band.
+func ageBandLabel(ageBand string) string {
+	switch ageBand {
+	case "infant":
+		return "0~1세"
+	case "toddler":
+		return "2~3세"
+	case "preschool":
+		return "4~5세"
+	case "kindergarten":
+		return "6세"
+	default:
+		return "2~3세"
 	}
 }
 
@@ -124,41 +143,47 @@ func settingLabel(setting string) (string, bool) {
 	}
 }
 
-// lengthPages turns a requested length into a target page count. An empty/unknown
-// length PRESERVES the age-band default so older clients that omit it keep their
-// age-appropriate length (planning/40, C2 — backward compatible).
+// lengthPages turns a requested length into a target page count. Bedtime stories
+// benefit from real length, so these are generous (short ≈ what a whole short
+// story should feel like). An empty/unknown length PRESERVES the age-band default
+// so a caller that omits it keeps an age-appropriate length (planning/40, C2).
 func lengthPages(length string, ageDefault int) int {
 	switch length {
 	case "short":
-		return 3
+		return 8
 	case "medium":
-		return 5
+		return 13
 	case "long":
-		return 7
+		return 18
 	default:
 		return ageDefault
 	}
 }
 
-// ageGuidance tunes vocabulary, length, and tone per age band (docs/planning/10).
-func ageGuidance(ageBand string) (guidance string, pages int) {
+// ageDefaultPages is the natural page count when no explicit length is chosen.
+// Vocabulary/sentence guidance per age lives in the system prompt (# 나이대별
+// 표현); this only sizes the story.
+func ageDefaultPages(ageBand string) int {
 	switch ageBand {
 	case "infant": // 0-1
-		return "아주 짧고 단순한 문장, 반복되는 리듬, 의성어/의태어 위주.", 3
+		return 5
 	case "toddler": // 2-3
-		return "짧고 쉬운 문장, 익숙한 일상 소재, 따뜻하고 안심되는 톤.", 4
+		return 7
 	case "preschool": // 4-5
-		return "간단한 기승전결, 공감과 작은 교훈, 호기심을 자극하는 전개.", 5
+		return 9
 	case "kindergarten": // 6
-		return "조금 더 풍부한 어휘와 이야기 구조, 용기·배려 같은 가치를 자연스럽게.", 6
+		return 11
 	default:
-		return "짧고 쉬운 문장, 따뜻하고 안심되는 톤.", 4
+		return 7
 	}
 }
 
-// buildStoryPrompt assembles the Korean prompt sent to the AI. It bakes in
-// safety guardrails and asks for STRICT JSON so the response parses reliably.
-func buildStoryPrompt(req StoryRequest) string {
+// buildStoryMaterials assembles ONLY the per-request user turn: the child's
+// materials + today's settings. The durable system prompt (persona/safety/style/
+// age+mood definitions/output contract) is delivered separately — as a Kagi
+// profile's instructions in profile mode, or prepended by buildStoryPrompt for
+// the base-model path — so it isn't re-sent in every request.
+func buildStoryMaterials(req StoryRequest) string {
 	labels := situationLabels()
 	situations := make([]string, 0, len(req.SituationIDs))
 	for _, id := range req.SituationIDs {
@@ -189,16 +214,14 @@ func buildStoryPrompt(req StoryRequest) string {
 	}
 	companion := sanitize(req.CompanionName)
 	characters := characterLines(req.Characters)
-	guidance, ageDefaultPages := ageGuidance(req.AgeBand)
-	pages := lengthPages(req.Length, ageDefaultPages)
+	pages := lengthPages(req.Length, ageDefaultPages(req.AgeBand))
 
-	// The canonical system prompt (persona/safety/style/output contract) is the
-	// embedded .md; the backend appends only the per-request materials + trusted
-	// writing directives. [이야기 재료] is user-derived (untrusted, quarantined by
-	// the system prompt); [집필 지침] is backend-derived (whitelisted → trusted).
+	// Only per-request values — never duplicated instruction sentences (those live
+	// once in the system prompt). [이야기 재료] is user-derived (untrusted,
+	// quarantined by the system prompt); [오늘의 설정] is backend-derived selections
+	// (trusted labels the system prompt defines).
 	var b strings.Builder
-	b.WriteString(storyAuthorSystem)
-	b.WriteString("\n\n[이야기 재료]\n")
+	b.WriteString("[이야기 재료]\n")
 	b.WriteString(fmt.Sprintf("- 주인공 아이: %s\n", name))
 	if len(interests) > 0 {
 		b.WriteString(fmt.Sprintf("- 좋아하는 것: %s\n", strings.Join(interests, ", ")))
@@ -215,10 +238,18 @@ func buildStoryPrompt(req StoryRequest) string {
 	if label, ok := settingLabel(req.Setting); ok {
 		b.WriteString(fmt.Sprintf("- 이야기의 배경: %s\n", label))
 	}
-	b.WriteString("\n[집필 지침]\n")
-	b.WriteString(fmt.Sprintf("- 분위기: %s\n", moodGuidance(req.Mood)))
-	b.WriteString(fmt.Sprintf("- 나이에 맞는 표현: %s\n", guidance))
+	b.WriteString("\n[오늘의 설정]\n")
+	b.WriteString(fmt.Sprintf("- 나이대: %s\n", ageBandLabel(req.AgeBand)))
+	b.WriteString(fmt.Sprintf("- 분위기: %s\n", moodLabel(req.Mood)))
 	b.WriteString(fmt.Sprintf("- 목표 페이지 수: 정확히 %d개\n", pages))
-	b.WriteString("\n이제 위 재료로 아이를 위한 취침 동화를 지어 주세요.")
 	return b.String()
+}
+
+// buildStoryPrompt is the self-contained prompt (system prompt + materials) used
+// on the base-model path — when no Kagi profile carries the system prompt — and
+// in tests. In profile mode the handler sends only buildStoryMaterials, since the
+// profile's instructions (created from the same embedded .md) ARE the system
+// prompt, so it isn't re-sent per request.
+func buildStoryPrompt(req StoryRequest) string {
+	return storyAuthorSystem + "\n\n" + buildStoryMaterials(req)
 }

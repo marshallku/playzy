@@ -58,10 +58,10 @@ func TestBuildStoryPrompt_InjectionCannotFormNewLine(t *testing.T) {
 	}
 }
 
-func TestAgeGuidance_PageCounts(t *testing.T) {
-	cases := map[string]int{"infant": 3, "toddler": 4, "preschool": 5, "kindergarten": 6, "unknown": 4}
+func TestAgeDefaultPages(t *testing.T) {
+	cases := map[string]int{"infant": 5, "toddler": 7, "preschool": 9, "kindergarten": 11, "unknown": 7}
 	for band, want := range cases {
-		if _, pages := ageGuidance(band); pages != want {
+		if pages := ageDefaultPages(band); pages != want {
 			t.Errorf("%s: pages = %d, want %d", band, pages, want)
 		}
 	}
@@ -69,14 +69,15 @@ func TestAgeGuidance_PageCounts(t *testing.T) {
 
 func TestLengthPages_OmittedPreservesAgeDefault(t *testing.T) {
 	// C2: an omitted/unknown length must NOT force a fixed count — it keeps the
-	// age-band default so older clients stay age-appropriate.
+	// age-band default so a caller that omits it stays age-appropriate.
 	if got := lengthPages("", 4); got != 4 {
 		t.Errorf(`lengthPages("", 4) = %d, want 4`, got)
 	}
 	if got := lengthPages("weird", 6); got != 6 {
 		t.Errorf(`lengthPages("weird", 6) = %d, want 6 (unknown preserves default)`, got)
 	}
-	explicit := map[string]int{"short": 3, "medium": 5, "long": 7}
+	// Generous by design so stories feel substantial (short ≈ a whole short story).
+	explicit := map[string]int{"short": 8, "medium": 13, "long": 18}
 	for length, want := range explicit {
 		if got := lengthPages(length, 4); got != want {
 			t.Errorf("lengthPages(%q, 4) = %d, want %d", length, got, want)
@@ -93,27 +94,27 @@ func TestBuildStoryPrompt_MoodAndSetting(t *testing.T) {
 		Setting:      "space",
 		Length:       "long",
 	})
-	for _, want := range []string{"모험", "이야기의 배경: 우주", "분위기"} {
+	for _, want := range []string{"분위기: 모험적인", "이야기의 배경: 우주", "나이대: 2~3세"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing %q", want)
 		}
 	}
-	// Explicit "long" → exactly 7 pages requested.
-	if !strings.Contains(p, "정확히 7개") {
-		t.Errorf("explicit long length not reflected as exactly 7 pages")
+	// Explicit "long" → exactly 18 pages requested (generous length scale).
+	if !strings.Contains(p, "정확히 18개") {
+		t.Errorf("explicit long length not reflected as exactly 18 pages")
 	}
 }
 
 func TestBuildStoryPrompt_UnknownMoodFallsBackToCozy(t *testing.T) {
-	// An unknown mood must resolve to the cozy tone and never echo the raw value.
+	// An unknown mood must resolve to the cozy label and never echo the raw value.
 	p := buildStoryPrompt(StoryRequest{
 		ChildName:    "하준",
 		AgeBand:      "toddler",
 		SituationIDs: []string{"bedtime"},
 		Mood:         "sinister-override",
 	})
-	if !strings.Contains(p, "포근하고 안심되는 분위기") {
-		t.Error("unknown mood should fall back to the cozy tone guidance")
+	if !strings.Contains(p, "분위기: 포근한") {
+		t.Error("unknown mood should fall back to the cozy label")
 	}
 	if strings.Contains(p, "sinister-override") {
 		t.Error("raw unknown mood leaked into the prompt")
@@ -165,6 +166,24 @@ func TestBuildStoryPrompt_QuarantinesUserData(t *testing.T) {
 	p := buildStoryPrompt(StoryRequest{ChildName: "하준", AgeBand: "toddler", SituationIDs: []string{"bedtime"}})
 	if !strings.Contains(p, "이야기 재료") || !strings.Contains(p, "신뢰하지 않는 데이터") {
 		t.Error("prompt missing the data-isolation framing")
+	}
+}
+
+func TestBuildStoryMaterials_ExcludesSystemPrompt(t *testing.T) {
+	// The per-request materials must NOT carry the durable system prompt (it lives
+	// in the Kagi profile / is prepended only on the base-model path).
+	m := buildStoryMaterials(StoryRequest{
+		ChildName: "하준", AgeBand: "toddler", SituationIDs: []string{"bedtime"}, Length: "short",
+	})
+	for _, want := range []string{"[이야기 재료]", "[오늘의 설정]", "하준", "정확히 8개"} {
+		if !strings.Contains(m, want) {
+			t.Errorf("materials missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{"동화 작가", "절대 안전 규칙", "해요체", "# 분위기"} {
+		if strings.Contains(m, unwanted) {
+			t.Errorf("materials should NOT contain system-prompt content %q", unwanted)
+		}
 	}
 }
 
