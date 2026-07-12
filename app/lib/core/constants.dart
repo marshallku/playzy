@@ -13,4 +13,9 @@ abstract final class AppConstants {
   /// Extra characters a story can feature (등장인물). Mirrors the backend cap
   /// (`maxCharacters`) — the server is the real guard (planning/40).
   static const int maxCharactersPerStory = 5;
+
+  /// How many saved characters the reusable roster (보관함) can hold. Larger than
+  /// [maxCharactersPerStory] — the roster is a library; a single story still
+  /// features at most [maxCharactersPerStory] of them.
+  static const int maxRosterCharacters = 12;
 }

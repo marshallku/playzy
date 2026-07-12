@@ -45,12 +45,18 @@ class HomeScreen extends ConsumerWidget {
                     context.push(child != null ? Routes.pick : Routes.profile),
               ),
               if (child != null)
-                Align(
-                  alignment: Alignment.center,
-                  child: TextButton(
-                    onPressed: () => context.push(Routes.profile),
-                    child: const Text('아이 정보 수정'),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton(
+                      onPressed: () => context.push(Routes.profile),
+                      child: const Text('아이 정보 수정'),
+                    ),
+                    TextButton(
+                      onPressed: () => context.push(Routes.roster),
+                      child: const Text('등장인물 보관함'),
+                    ),
+                  ],
                 ),
               if (child != null && recent.isNotEmpty) ...[
                 const SizedBox(height: AppSpacing.x4l),

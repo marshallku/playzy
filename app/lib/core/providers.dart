@@ -14,6 +14,7 @@ import '../data/story/story_api.dart';
 import '../domain/child_profile.dart';
 import '../domain/quota_state.dart';
 import '../domain/story.dart';
+import '../domain/story_options.dart';
 import '../sdui/sdui_models.dart';
 import 'constants.dart';
 import 'env.dart';
@@ -108,6 +109,53 @@ class ProfileController extends AsyncNotifier<ChildProfile?> {
 
 final profileControllerProvider =
     AsyncNotifierProvider<ProfileController, ChildProfile?>(ProfileController.new);
+
+/// The reusable character roster (보관함). Loads on build (seeding once from the
+/// legacy companion); [add]/[remove] persist. Mutations are serialized through a
+/// pending-future chain so a rapid double-tap can't let an older write land last
+/// and clobber the newer full list (codex WU3 C1).
+class RosterController extends AsyncNotifier<List<StoryCharacter>> {
+  Future<void> _pending = Future.value();
+
+  @override
+  Future<List<StoryCharacter>> build() =>
+      ref.watch(profileRepositoryProvider).loadRoster();
+
+  /// Runs [op] after any in-flight mutation completes, so state reads and writes
+  /// stay ordered. A failed op doesn't break the chain for the next one.
+  Future<void> _enqueue(Future<void> Function() op) {
+    final next = _pending.then((_) => op());
+    _pending = next.catchError((_) {});
+    return next;
+  }
+
+  /// Adds a character; no-op on a blank name, an existing (name, kind) duplicate,
+  /// or once the roster is full. Names are compared trimmed (no case folding —
+  /// Korean is caseless; exact match keeps it predictable).
+  Future<void> add(StoryCharacter character) => _enqueue(() async {
+        final name = character.name.trim();
+        if (name.isEmpty) return;
+        final current = state.valueOrNull ?? const <StoryCharacter>[];
+        final duplicate =
+            current.any((c) => c.name.trim() == name && c.kind == character.kind);
+        if (duplicate || current.length >= AppConstants.maxRosterCharacters) return;
+        final next = [...current, StoryCharacter(name: name, kind: character.kind)];
+        state = AsyncData(next);
+        await ref.read(profileRepositoryProvider).saveRoster(next);
+      });
+
+  Future<void> remove(StoryCharacter character) => _enqueue(() async {
+        final current = state.valueOrNull ?? const <StoryCharacter>[];
+        final next = current
+            .where((c) => !(c.name == character.name && c.kind == character.kind))
+            .toList();
+        state = AsyncData(next);
+        await ref.read(profileRepositoryProvider).saveRoster(next);
+      });
+}
+
+final rosterControllerProvider =
+    AsyncNotifierProvider<RosterController, List<StoryCharacter>>(RosterController.new);
 
 /// Free-tier generation counter (local mirror of backend-enforced quota).
 class GeneratedCountController extends AsyncNotifier<int> {

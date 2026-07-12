@@ -5,6 +5,7 @@ import '../domain/story.dart';
 import '../features/child_profile/child_profile_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/paywall/paywall_screen.dart';
+import '../features/roster/roster_screen.dart';
 import '../features/situation_picker/situation_picker_screen.dart';
 import '../features/story/generating_screen.dart';
 import '../features/story/story_options_screen.dart';
@@ -14,6 +15,7 @@ import '../features/story/story_reader_screen.dart';
 abstract final class Routes {
   static const home = '/';
   static const profile = '/profile';
+  static const roster = '/roster';
   static const pick = '/pick';
   static const options = '/options';
   static const generating = '/generating';
@@ -32,6 +34,9 @@ GoRouter createAppRouter() => GoRouter(
         GoRoute(
             path: Routes.profile,
             builder: (_, __) => const ChildProfileScreen()),
+        GoRoute(
+            path: Routes.roster,
+            builder: (_, __) => const RosterScreen()),
         GoRoute(
             path: Routes.pick,
             builder: (_, __) => const SituationPickerScreen()),

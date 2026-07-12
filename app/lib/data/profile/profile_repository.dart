@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/child_profile.dart';
+import '../../domain/story_options.dart';
 
 /// Local persistence for the child profile + the free-tier generation count.
 /// One child for MVP (docs/planning/10). An interface so tests use a fake and
@@ -8,6 +11,13 @@ import '../../domain/child_profile.dart';
 abstract interface class ProfileRepository {
   Future<ChildProfile?> loadProfile();
   Future<void> saveProfile(ChildProfile profile);
+
+  /// The reusable character roster (보관함) — saved once, picked per story. On
+  /// first read after upgrade it is seeded from the profile's legacy
+  /// `companionName` so that default isn't lost when the profile screen stops
+  /// editing it.
+  Future<List<StoryCharacter>> loadRoster();
+  Future<void> saveRoster(List<StoryCharacter> roster);
 
   /// Free-tier counter — how many stories this device has generated. In
   /// production the authoritative count is backend-enforced (ADR 0002); this
@@ -30,6 +40,7 @@ class PrefsProfileRepository implements ProfileRepository {
   final SharedPreferences _prefs;
 
   static const _profileKey = 'child_profile';
+  static const _rosterKey = 'character_roster';
   static const _countKey = 'generated_count';
   static const _creditsKey = 'credits';
 
@@ -43,6 +54,58 @@ class PrefsProfileRepository implements ProfileRepository {
   @override
   Future<void> saveProfile(ChildProfile profile) async {
     await _prefs.setString(_profileKey, profile.encode());
+  }
+
+  @override
+  Future<List<StoryCharacter>> loadRoster() async {
+    final raw = _prefs.getString(_rosterKey);
+    if (raw != null) return _decodeRoster(raw);
+    // First read after upgrade: seed once from the legacy profile companion, then
+    // persist — EVEN WHEN EMPTY — so "migrated (possibly empty)" is distinct from
+    // "never migrated" and a later profile change can't re-trigger seeding
+    // (codex WU3 C2). Idempotent on the roster key's presence.
+    final seeded = _seedFromLegacyCompanion();
+    // Best-effort: if the write fails we simply re-seed next load (the source
+    // companion is unchanged), rather than returning a phantom-persisted roster.
+    try {
+      await _prefs.setString(_rosterKey, _encodeRoster(seeded));
+    } catch (_) {/* re-seed next load */}
+    return seeded;
+  }
+
+  @override
+  Future<void> saveRoster(List<StoryCharacter> roster) async {
+    await _prefs.setString(_rosterKey, _encodeRoster(roster));
+  }
+
+  List<StoryCharacter> _seedFromLegacyCompanion() {
+    final raw = _prefs.getString(_profileKey);
+    if (raw == null) return const [];
+    try {
+      final json = jsonDecode(raw) as Map<String, dynamic>;
+      final companion = (json['companionName'] as String?)?.trim();
+      if (companion == null || companion.isEmpty) return const [];
+      return [StoryCharacter(name: companion, kind: CharacterKind.friend)];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  String _encodeRoster(List<StoryCharacter> roster) =>
+      jsonEncode(roster.map((c) => c.toJson()).toList());
+
+  /// Decodes per-entry: a corrupt/legacy entry is skipped, never failing the
+  /// whole load (mirrors the StoryLibrary robustness rule, planning/40 C5).
+  List<StoryCharacter> _decodeRoster(String raw) {
+    final out = <StoryCharacter>[];
+    try {
+      for (final e in jsonDecode(raw) as List<dynamic>) {
+        try {
+          if (e is Map<String, dynamic>) out.add(StoryCharacter.fromJson(e));
+        } catch (_) {/* skip corrupt entry */}
+      }
+    } catch (_) {/* corrupt list → empty */}
+    return out;
   }
 
   @override
@@ -76,20 +139,46 @@ class PrefsProfileRepository implements ProfileRepository {
 
 /// In-memory implementation for tests and offline development.
 class FakeProfileRepository implements ProfileRepository {
-  FakeProfileRepository({ChildProfile? profile, int count = 0, int credits = 0})
-      : _profile = profile,
+  FakeProfileRepository({
+    ChildProfile? profile,
+    int count = 0,
+    int credits = 0,
+    List<StoryCharacter>? roster,
+  })  : _profile = profile,
         _count = count,
-        _credits = credits;
+        _credits = credits,
+        _roster = roster == null ? null : List.of(roster);
 
   ChildProfile? _profile;
   int _count;
   int _credits;
+
+  /// null = never set (mirrors the prefs roster-key absence, so the legacy
+  /// companion seed fires exactly once).
+  List<StoryCharacter>? _roster;
 
   @override
   Future<ChildProfile?> loadProfile() async => _profile;
 
   @override
   Future<void> saveProfile(ChildProfile profile) async => _profile = profile;
+
+  @override
+  Future<List<StoryCharacter>> loadRoster() async {
+    if (_roster != null) return List.of(_roster!);
+    // First read: seed once from the legacy companion, then remember it — even
+    // when empty — so an emptied roster is never re-seeded and a later profile
+    // change can't re-trigger seeding (matches the prefs implementation, C2).
+    final companion = _profile?.companionName?.trim();
+    final seeded = (companion != null && companion.isNotEmpty)
+        ? [StoryCharacter(name: companion, kind: CharacterKind.friend)]
+        : <StoryCharacter>[];
+    _roster = List.of(seeded);
+    return List.of(seeded);
+  }
+
+  @override
+  Future<void> saveRoster(List<StoryCharacter> roster) async => _roster = List.of(roster);
 
   @override
   Future<int> generatedCount() async => _count;
