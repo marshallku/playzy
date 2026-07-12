@@ -8,7 +8,7 @@ import 'package:playzy/domain/child_profile.dart';
 import 'package:playzy/domain/story.dart';
 import 'package:playzy/features/story/story_reader_screen.dart';
 
-const _child = ChildProfile(id: 'c1', name: '하준', ageBand: AgeBand.toddler);
+const _child = ChildProfile(id: 'c1', givenName: '하준', ageBand: AgeBand.toddler);
 
 Story _story(String id, String title) =>
     Story(id: id, title: title, pages: const [StoryPage(text: '옛날 옛적에...')]);

@@ -20,40 +20,46 @@ class ChildProfileScreen extends ConsumerStatefulWidget {
 
 class _ChildProfileScreenState extends ConsumerState<ChildProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _companionController = TextEditingController();
+  final _familyNameController = TextEditingController();
+  final _givenNameController = TextEditingController();
   AgeBand _ageBand = AgeBand.toddler;
   final Set<String> _interests = {};
   bool _hydrated = false;
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _companionController.dispose();
+    _familyNameController.dispose();
+    _givenNameController.dispose();
     super.dispose();
   }
 
   void _hydrate(ChildProfile profile) {
     if (_hydrated) return;
     _hydrated = true;
-    _nameController.text = profile.name;
-    _companionController.text = profile.companionName ?? '';
+    _familyNameController.text = profile.familyName ?? '';
+    _givenNameController.text = profile.givenName;
     _ageBand = profile.ageBand;
     _interests.addAll(profile.interests);
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    final existing = ref.read(profileControllerProvider).valueOrNull;
-    final companion = _companionController.text.trim();
-    final profile = ChildProfile(
-      id: existing?.id ?? 'child-1',
-      name: _nameController.text.trim(),
-      ageBand: _ageBand,
-      interests: _interests.toList(),
-      companionName: companion.isEmpty ? null : companion,
-    );
+    final family = _familyNameController.text.trim();
     try {
+      // Await the AUTHORITATIVE existing profile (not valueOrNull) so a save
+      // fired before load completes can't drop the legacy companionName the
+      // roster still needs to migrate (codex C2/C1).
+      final existing = await ref.read(profileControllerProvider.future);
+      final profile = ChildProfile(
+        id: existing?.id ?? 'child-1',
+        givenName: _givenNameController.text.trim(),
+        familyName: family.isEmpty ? null : family,
+        ageBand: _ageBand,
+        interests: _interests.toList(),
+        // Preserve the legacy companion so the roster migration can still read it
+        // (it's no longer edited here — it lives in the character roster now).
+        companionName: existing?.companionName,
+      );
       await ref.read(profileControllerProvider.notifier).save(profile);
       if (mounted && context.canPop()) context.pop();
     } catch (_) {
@@ -83,13 +89,35 @@ class _ChildProfileScreenState extends ConsumerState<ChildProfileScreen> {
             padding: const EdgeInsets.all(AppSpacing.screenEdge),
             children: [
               Text('이름', style: AppTypography.h3.copyWith(color: colors.textPrimary)),
+              const SizedBox(height: AppSpacing.xs),
+              Text('이야기에는 이름만 다정하게 불러요',
+                  style: AppTypography.bodySm.copyWith(color: colors.textTertiary)),
               const SizedBox(height: AppSpacing.sm),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(hintText: '아이 이름'),
-                textInputAction: TextInputAction.next,
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? '이름을 입력해 주세요' : null,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _familyNameController,
+                      decoration: const InputDecoration(
+                          labelText: '성 (선택)', hintText: '예: 김'),
+                      textInputAction: TextInputAction.next,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: _givenNameController,
+                      decoration: const InputDecoration(
+                          labelText: '이름', hintText: '예: 하준'),
+                      textInputAction: TextInputAction.next,
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? '이름을 입력해 주세요' : null,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: AppSpacing.xxl),
               Text('나이', style: AppTypography.h3.copyWith(color: colors.textPrimary)),
@@ -121,14 +149,6 @@ class _ChildProfileScreenState extends ConsumerState<ChildProfileScreen> {
                       }),
                     ),
                 ],
-              ),
-              const SizedBox(height: AppSpacing.xxl),
-              Text('함께하는 친구 (선택)',
-                  style: AppTypography.h3.copyWith(color: colors.textPrimary)),
-              const SizedBox(height: AppSpacing.sm),
-              TextFormField(
-                controller: _companionController,
-                decoration: const InputDecoration(hintText: '예: 누나, 강아지 콩이'),
               ),
               const SizedBox(height: AppSpacing.x4l),
               PrimaryButton(label: '저장하기', onPressed: _save),

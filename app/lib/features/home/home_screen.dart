@@ -88,7 +88,7 @@ class _Greeting extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('${child.name}의 밤',
+        Text('${child.givenName}의 밤',
             style: AppTypography.display.copyWith(color: colors.primary)),
         const SizedBox(height: AppSpacing.sm),
         Text('오늘은 어떤 이야기를 들려줄까요?',

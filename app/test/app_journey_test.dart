@@ -30,9 +30,10 @@ void main() {
     await tester.tap(find.text('아이 정보 입력하고 시작하기'));
     await tester.pumpAndSettle();
 
-    // 2) Child profile form → fill name + an interest, save.
+    // 2) Child profile form → fill given name (성 first, 이름 second) + an
+    //    interest, save.
     expect(find.text('아이 정보'), findsWidgets);
-    await tester.enterText(find.byType(TextFormField).first, '하준');
+    await tester.enterText(find.byType(TextFormField).at(1), '하준');
     await tester.tap(find.text('공룡'));
     await tester.pump();
     await tester.tap(find.text('저장하기'));

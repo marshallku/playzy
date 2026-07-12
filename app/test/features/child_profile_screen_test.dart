@@ -39,7 +39,7 @@ void main() {
 
   testWidgets('hydrates the form from an existing profile (no overwrite)', (tester) async {
     final repo = FakeProfileRepository(
-      profile: const ChildProfile(id: 'child-1', name: '서연', ageBand: AgeBand.preschool),
+      profile: const ChildProfile(id: 'child-1', givenName: '서연', ageBand: AgeBand.preschool),
     );
     await pumpProfile(tester, repo);
 
@@ -51,14 +51,15 @@ void main() {
     final repo = FakeProfileRepository();
     await pumpProfile(tester, repo);
 
-    await tester.enterText(find.byType(TextFormField).first, '하준');
+    // Field order: 성(family) first, 이름(given) second — enter the given name.
+    await tester.enterText(find.byType(TextFormField).at(1), '하준');
     await tester.tap(find.text('공룡'));
     await tester.pump();
     await tester.tap(find.text('저장하기'));
     await tester.pumpAndSettle();
 
     final saved = await repo.loadProfile();
-    expect(saved?.name, '하준');
+    expect(saved?.givenName, '하준');
     expect(saved?.interests, contains('공룡'));
     // Popped back to home after saving.
     expect(find.text('home'), findsOneWidget);
@@ -67,7 +68,7 @@ void main() {
   testWidgets('a failed save does not pop and surfaces an error', (tester) async {
     await pumpProfile(tester, _ThrowingProfileRepository());
 
-    await tester.enterText(find.byType(TextFormField).first, '하준');
+    await tester.enterText(find.byType(TextFormField).at(1), '하준');
     await tester.tap(find.text('저장하기'));
     await tester.pumpAndSettle();
 

@@ -5,7 +5,8 @@ void main() {
   group('ChildProfile', () {
     const profile = ChildProfile(
       id: 'c1',
-      name: '하준',
+      familyName: '김',
+      givenName: '하준',
       ageBand: AgeBand.toddler,
       interests: ['공룡', '자동차'],
       companionName: '누나',
@@ -14,6 +15,8 @@ void main() {
     test('JSON round-trips without loss', () {
       final decoded = ChildProfile.fromJson(profile.toJson());
       expect(decoded, profile);
+      expect(decoded.givenName, '하준');
+      expect(decoded.familyName, '김');
       expect(decoded.interests, ['공룡', '자동차']);
       expect(decoded.companionName, '누나');
     });
@@ -22,34 +25,53 @@ void main() {
       expect(ChildProfile.decode(profile.encode()), profile);
     });
 
+    test('legacy single `name` migrates to givenName verbatim', () {
+      // Pre-split profiles stored one `name`; it becomes the given name (auto-
+      // splitting a surname is unreliable), and family name stays null.
+      final decoded = ChildProfile.fromJson({
+        'id': 'c2',
+        'name': '하준',
+        'ageBand': 'toddler',
+      });
+      expect(decoded.givenName, '하준');
+      expect(decoded.familyName, isNull);
+    });
+
+    test('toJson keeps companionName so the roster can migrate it (C2)', () {
+      expect(profile.toJson()['companionName'], '누나');
+      // givenName is written under the new key, not the legacy `name`.
+      expect(profile.toJson()['givenName'], '하준');
+      expect(profile.toJson().containsKey('name'), isFalse);
+    });
+
     test('copyWith preserves id and overrides fields', () {
-      final updated = profile.copyWith(name: '서연', ageBand: AgeBand.preschool);
+      final updated = profile.copyWith(givenName: '서연', ageBand: AgeBand.preschool);
       expect(updated.id, 'c1');
-      expect(updated.name, '서연');
+      expect(updated.givenName, '서연');
+      expect(updated.familyName, '김'); // preserved
       expect(updated.ageBand, AgeBand.preschool);
       expect(updated.interests, profile.interests);
     });
 
-    test('copyWith(clearCompanionName) clears the optional companion', () {
-      final cleared = profile.copyWith(clearCompanionName: true);
-      expect(cleared.companionName, isNull);
-      // A plain copyWith without the flag keeps the existing value.
-      expect(profile.copyWith(name: 'x').companionName, '누나');
+    test('copyWith(clearFamilyName) clears the optional family name', () {
+      expect(profile.copyWith(clearFamilyName: true).familyName, isNull);
+      expect(profile.copyWith(givenName: 'x').familyName, '김'); // kept without the flag
     });
 
-    test('interests default to empty and omitted companion is null', () {
+    test('interests default to empty and omitted family/companion are null', () {
       final decoded = ChildProfile.fromJson({
         'id': 'c2',
-        'name': '아이',
+        'givenName': '아이',
         'ageBand': 'infant',
       });
       expect(decoded.interests, isEmpty);
+      expect(decoded.familyName, isNull);
       expect(decoded.companionName, isNull);
     });
 
     test('equality ignores interest ordering only when identical', () {
-      const a = ChildProfile(id: 'x', name: 'n', ageBand: AgeBand.infant, interests: ['a', 'b']);
-      const b = ChildProfile(id: 'x', name: 'n', ageBand: AgeBand.infant, interests: ['b', 'a']);
+      const a = ChildProfile(id: 'x', givenName: 'n', ageBand: AgeBand.infant, interests: ['a', 'b']);
+      const b = ChildProfile(id: 'x', givenName: 'n', ageBand: AgeBand.infant, interests: ['b', 'a']);
       expect(a == b, isFalse);
     });
 

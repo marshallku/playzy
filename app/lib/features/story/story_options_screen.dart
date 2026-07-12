@@ -76,7 +76,7 @@ class _StoryOptionsScreenState extends ConsumerState<StoryOptionsScreen> {
         .where((c) => c.name.isNotEmpty)
         .toList();
     final request = StoryRequest(
-      childName: profile.name,
+      childName: profile.givenName,
       ageBand: profile.ageBand.name,
       situationIds: widget.situationIds,
       interests: profile.interests,

@@ -44,7 +44,7 @@ Future<StoryRequest?> _pumpOptions(WidgetTester tester,
         profileRepositoryProvider.overrideWithValue(
           FakeProfileRepository(
             profile: const ChildProfile(
-                id: 'c1', name: '하준', ageBand: AgeBand.toddler),
+                id: 'c1', givenName: '하준', ageBand: AgeBand.toddler),
           ),
         ),
         deviceIdProvider.overrideWithValue('test-device'),
@@ -85,7 +85,7 @@ void main() {
           profileRepositoryProvider.overrideWithValue(
             FakeProfileRepository(
               profile: const ChildProfile(
-                  id: 'c1', name: '하준', ageBand: AgeBand.toddler),
+                  id: 'c1', givenName: '하준', ageBand: AgeBand.toddler),
             ),
           ),
           deviceIdProvider.overrideWithValue('test-device'),
@@ -132,7 +132,7 @@ void main() {
           profileRepositoryProvider.overrideWithValue(
             FakeProfileRepository(
               profile: const ChildProfile(
-                  id: 'c1', name: '서연', ageBand: AgeBand.preschool),
+                  id: 'c1', givenName: '서연', ageBand: AgeBand.preschool),
             ),
           ),
           deviceIdProvider.overrideWithValue('test-device'),
@@ -206,7 +206,7 @@ void main() {
           profileRepositoryProvider.overrideWithValue(
             FakeProfileRepository(
               profile: const ChildProfile(
-                  id: 'c1', name: '하준', ageBand: AgeBand.toddler),
+                  id: 'c1', givenName: '하준', ageBand: AgeBand.toddler),
             ),
           ),
           deviceIdProvider.overrideWithValue('test-device'),
