@@ -35,16 +35,22 @@ whose state survives native back-swipe.
 | Full-flow journey (new funnel) | `flutter test test/app_journey_test.dart` | **passing** — profile (성/이름) → topic (seed + chip) → cast (add to roster) → tone (length) → reader |
 | Funnel step behavior | `flutter test test/features/create_funnel_test.dart` | **passing** — topic gating (seed OR chip), chip-only subject advances, cast selection capped at 5 |
 | Roster persistence + migration | `flutter test test/data/roster_repository_test.dart test/core/roster_controller_test.dart` | **passing** — legacy companion seeded once, dedupe/cap, mutate-before-load safe |
+| **On-device journey (new funnel, real backend)** | `flutter test integration_test/app_journey_test.dart -d "iPhone 17" --dart-define=PLAYZY_API_BASE_URL=http://127.0.0.1:8080` | **All tests passed** — the full 3-step funnel ran on the iPhone 17 sim through the real Playzy backend → real LLM story in the night-mode reader |
 | **Real backend + AI (new request shape)** | `curl POST /v1/stories` with `topic` + `situationIds` + `characters` (no `setting`/`companionName`) | ✓ 8-page story, personalized by given name + topic + roster character (title "하준이의 새 이 이야기") |
 | Topic-only request | `curl POST /v1/stories` with `topic`, no `situationIds` | ✓ valid story; whitespace-only topic + no situation → **HTTP 400** |
 
-Fresh **on-device (simulator) and web screenshots of the new funnel are pending**:
-no iOS simulator runtimes were available in this session's toolchain, so the
-redesign's visual capture is deferred. Behavioral coverage is the passing
-full-flow journey + funnel widget tests above, and the story content itself was
-verified end-to-end through the real backend/AI chain (valid JSON, exact page
-count, given-name-only personalization). The screenshots below (02/05/05b) show
-the **pre-redesign** flow and are retained as historical evidence.
+Captured on the iPhone 17 simulator during the on-device run above (frames grabbed
+via `simctl io booted screenshot` while the funnel steps held):
+
+| # | Screen | What it proves |
+| --- | --- | --- |
+| [ios-05](ios/ios-05-home-redesign.png) | Home (post-profile) | "하준의 밤" given-name greeting + the new **등장인물 보관함** link; allowance card from the **real** `/v1/quota` ("무료 동화 2편 남았어요") |
+| [ios-06](ios/ios-06-funnel-topic.png) | Funnel 1/3 — 소재 | Progress bar 1/3; **free-text seed** ("오늘 이가 새로 났어요", 12/100) **and** the situation + theme chips kept (#2) |
+| [ios-07](ios/ios-07-funnel-cast.png) | Funnel 2/3 — 등장인물 | Progress 2/3; the reusable roster (#4) with the inline **새 인물** add dialog (이름 + 관계) |
+| [ios-08](ios/ios-08-funnel-tone.png) | Funnel 3/3 — 분위기·길이 | Progress 3/3; mood + length (짧게 selected), **no place picker** (#3 removed), "동화 만들기" |
+
+The screenshots further below (02/05/05b) show the **pre-redesign** flow and are
+retained as historical evidence.
 
 ## iOS — actually built and run in the simulator (pre-redesign)
 
