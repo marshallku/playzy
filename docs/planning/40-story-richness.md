@@ -1,5 +1,10 @@
 # 40 — Richer stories & a real home
 
+> **Partly superseded by [50-funnel-redesign](50-funnel-redesign.md).** The
+> `setting`/place knob was removed and the situation-picker → story-options flow
+> was replaced by a 3-step funnel. The characters/mood/length controls, story
+> persistence, and home redesign below carry forward unchanged.
+
 Feedback after M2: generated stories feel same-y (thin inputs, and dev runs on
 fakes), and the home screen is bare (title + one button). This plan adds
 generation-time story controls, richer prompting, story persistence, and a home

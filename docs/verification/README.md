@@ -7,19 +7,46 @@ compiles.
 
 | Check | How | Result |
 | --- | --- | --- |
-| App unit + widget tests | `flutter test` | **108 passing** |
-| App **end-to-end journey** | `flutter test test/app_journey_test.dart` | **passing** — drives the REAL app (router + providers + every screen) cold-start → **story options** → finished story |
+| App unit + widget tests | `flutter test` | **125 passing** |
+| App **end-to-end journey** | `flutter test test/app_journey_test.dart` | **passing** — drives the REAL app (router + providers + every screen) cold-start → **3-step create funnel** (topic → cast → tone) → finished story |
 | Static analysis | `flutter analyze` | clean |
-| Backend tests | `go test ./...` | **34 passing** |
+| Backend tests | `go test ./...` | **46 passing** |
 | Backend vet/format | `go vet` / `gofmt` | clean |
 | **Real web build** | `flutter build web --release` | ✓ Built `build/web` |
 
-Story-richness (planning/40) adds the generation controls (characters/mood/length/
-setting), a story-options step, story persistence, and the home redesign — all
-covered by the journey test plus `story_options_screen_test`, `story_library_test`,
-`library_save_test`, and `home_screen_test`.
+Funnel redesign (planning/50) replaces the picker + options screens with a
+3-step funnel — covered by the journey test plus `create_funnel_test`,
+`roster_repository_test`, `roster_controller_test`, `roster_screen_test`, and the
+updated `child_profile_test`/`story_test`. Earlier story-richness controls
+(characters/mood/length; **setting/place removed**) remain covered by the same
+journey plus `story_library_test`, `library_save_test`, and `home_screen_test`.
 
-## iOS — actually built and run in the simulator
+## Funnel redesign (planning/50) — how it was verified
+
+The story-creation flow was rebuilt (see `planning/50-funnel-redesign.md`): the
+child's name is split into 성/이름 (the story uses the given name only), tonight's
+subject accepts a **free-text seed alongside the situation chips**, the awkward
+place picker is **removed**, characters come from a **reusable roster (보관함)**,
+and the flow is a **3-step funnel with a progress bar** (topic → cast → tone)
+whose state survives native back-swipe.
+
+| Check | How | Result |
+| --- | --- | --- |
+| Full-flow journey (new funnel) | `flutter test test/app_journey_test.dart` | **passing** — profile (성/이름) → topic (seed + chip) → cast (add to roster) → tone (length) → reader |
+| Funnel step behavior | `flutter test test/features/create_funnel_test.dart` | **passing** — topic gating (seed OR chip), chip-only subject advances, cast selection capped at 5 |
+| Roster persistence + migration | `flutter test test/data/roster_repository_test.dart test/core/roster_controller_test.dart` | **passing** — legacy companion seeded once, dedupe/cap, mutate-before-load safe |
+| **Real backend + AI (new request shape)** | `curl POST /v1/stories` with `topic` + `situationIds` + `characters` (no `setting`/`companionName`) | ✓ 8-page story, personalized by given name + topic + roster character (title "하준이의 새 이 이야기") |
+| Topic-only request | `curl POST /v1/stories` with `topic`, no `situationIds` | ✓ valid story; whitespace-only topic + no situation → **HTTP 400** |
+
+Fresh **on-device (simulator) and web screenshots of the new funnel are pending**:
+no iOS simulator runtimes were available in this session's toolchain, so the
+redesign's visual capture is deferred. Behavioral coverage is the passing
+full-flow journey + funnel widget tests above, and the story content itself was
+verified end-to-end through the real backend/AI chain (valid JSON, exact page
+count, given-name-only personalization). The screenshots below (02/05/05b) show
+the **pre-redesign** flow and are retained as historical evidence.
+
+## iOS — actually built and run in the simulator (pre-redesign)
 
 The native toolchain hang (ADR 0005) was resolved (ad-hoc re-sign of the Flutter
 cache), so iOS was built and run for real:
@@ -99,11 +126,17 @@ simulated device, so name-entry-dependent later screens (picker → reader) are
 covered by the on-device integration test and the identical-code web captures
 above rather than re-shot here.
 
-## Manual e2e — the app actually running, captured
+## Manual e2e — the app actually running, captured (pre-redesign)
 
 The `flutter build web` output was served and driven through the whole user
 journey in a real (headless Chromium) browser. Screenshots below are the actual
 rendered app on fake backends (no server needed).
+
+> These capture the **pre-redesign** flow (before planning/50): the profile still
+> had one name field + a companion field, and tonight's story was a situation
+> **picker** → options step. The current flow is 성/이름 + the 3-step funnel;
+> re-captures are pending a working sim/web toolchain (see the redesign section
+> above). The rows below are kept as historical evidence of a real running app.
 
 | # | Screen | What it proves |
 | --- | --- | --- |
