@@ -31,16 +31,6 @@ void main() {
       expect(a.title, b.title);
     });
 
-    test('includes a companion page when a companion is given', () async {
-      final story = await api.generateStory(const StoryRequest(
-        childName: '하준',
-        ageBand: 'toddler',
-        situationIds: ['animals'],
-        companionName: '누나',
-      ));
-      expect(story.pages.any((p) => p.text.contains('누나')), isTrue);
-    });
-
     test('reflects requested characters in the pages (planning/40)', () async {
       final story = await api.generateStory(const StoryRequest(
         childName: '하준',

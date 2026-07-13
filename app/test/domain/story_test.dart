@@ -35,7 +35,7 @@ void main() {
   });
 
   group('StoryRequest', () {
-    test('serializes provider-agnostic fields; omits null companion', () {
+    test('serializes provider-agnostic fields', () {
       const req = StoryRequest(
         childName: '하준',
         ageBand: 'toddler',
@@ -45,7 +45,7 @@ void main() {
       final json = req.toJson();
       expect(json['childName'], '하준');
       expect(json['situationIds'], ['bedtime', 'teeth']);
-      expect(json.containsKey('companionName'), isFalse);
+      expect(json['interests'], ['공룡']);
     });
 
     test('JSON round-trips', () {
@@ -54,14 +54,12 @@ void main() {
         ageBand: 'preschool',
         situationIds: ['dark'],
         interests: ['별', '달'],
-        companionName: '아빠',
       );
       final decoded = StoryRequest.fromJson(req.toJson());
       expect(decoded.childName, '서연');
       expect(decoded.ageBand, 'preschool');
       expect(decoded.situationIds, ['dark']);
       expect(decoded.interests, ['별', '달']);
-      expect(decoded.companionName, '아빠');
     });
 
     test('defaults: cozy mood, no explicit length/characters', () {

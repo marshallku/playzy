@@ -28,9 +28,9 @@ reduce drop-off.
   (오늘의 이야기). Either one is enough; both enrich. The seed rides the wire as
   `topic` (sanitized, ≤120 runes, untrusted). Backend requires `topic` **OR** ≥1
   `situationId`.
-- **Place:** the `setting`/place picker is **removed** from the app (#3). The Go
-  `setting` field stays for wire back-compat; the app simply stops sending it.
-  The theme chips (우주/바다/공룡…) remain as subject tags.
+- **Place:** the `setting`/place picker is **removed** (#3) — from the app UI and,
+  in the follow-up cleanup, from the `StoryRequest` wire (Go + Dart) entirely. The
+  theme chips (우주/바다/공룡…) remain as subject tags.
 - **Characters:** a reusable **roster (보관함)** — saved once, picked per story.
   The profile's legacy single `companionName` is **migrated into the roster once**
   (seed-on-first-read, idempotent). A story features at most 5 of them.

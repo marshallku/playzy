@@ -134,25 +134,6 @@ func ageBandLabel(ageBand string) string {
 	}
 }
 
-// settingLabel maps a whitelisted backdrop to its Korean label. Unknown/empty
-// returns ok=false so the AI picks a backdrop itself (planning/40).
-func settingLabel(setting string) (string, bool) {
-	switch setting {
-	case "home":
-		return "집", true
-	case "forest":
-		return "숲속", true
-	case "sea":
-		return "바닷속", true
-	case "space":
-		return "우주", true
-	case "town":
-		return "마을", true
-	default:
-		return "", false
-	}
-}
-
 // lengthPages turns a requested length into a target page count. Bedtime stories
 // benefit from real length, so these are generous (short ≈ what a whole short
 // story should feel like). An empty/unknown length PRESERVES the age-band default
@@ -222,7 +203,6 @@ func buildStoryMaterials(req StoryRequest) string {
 			interests = append(interests, s)
 		}
 	}
-	companion := sanitize(req.CompanionName)
 	characters := characterLines(req.Characters)
 	pages := lengthPages(req.Length, ageDefaultPages(req.AgeBand))
 
@@ -241,17 +221,11 @@ func buildStoryMaterials(req StoryRequest) string {
 	if len(interests) > 0 {
 		b.WriteString(fmt.Sprintf("- 좋아하는 것: %s\n", strings.Join(interests, ", ")))
 	}
-	if companion != "" {
-		b.WriteString(fmt.Sprintf("- 함께하는 친구: %s\n", companion))
-	}
 	if len(characters) > 0 {
 		b.WriteString(fmt.Sprintf("- 등장인물: %s\n", strings.Join(characters, ", ")))
 	}
 	if len(situations) > 0 {
 		b.WriteString(fmt.Sprintf("- 오늘의 상황/주제: %s\n", strings.Join(situations, ", ")))
-	}
-	if label, ok := settingLabel(req.Setting); ok {
-		b.WriteString(fmt.Sprintf("- 이야기의 배경: %s\n", label))
 	}
 	b.WriteString("\n[오늘의 설정]\n")
 	b.WriteString(fmt.Sprintf("- 나이대: %s\n", ageBandLabel(req.AgeBand)))

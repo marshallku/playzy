@@ -8,7 +8,8 @@ the provider. Today it is the thinnest viable adapter: it proxies to a local
 ## Contract (what the app depends on)
 
 - `POST /v1/stories` — header `X-Device-Id` (required); body `StoryRequest`
-  (`childName`, `ageBand`, `situationIds`, `interests?`, `companionName?`) →
+  (`childName`, `ageBand`, `situationIds`, `topic?`, `interests?`, `characters?`,
+  `mood?`, `length?`) → 
   `Story` (`id`, `title`, `pages[]`, `createdAt`). Enforces the quota: `402` when
   free stories are used up and no credits remain.
 - `GET /v1/quota` — header `X-Device-Id` → `{freeUsed, freeLimit, credits,

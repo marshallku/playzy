@@ -55,18 +55,16 @@ type Character struct {
 
 // StoryRequest is the provider-agnostic request from the app (ADR 0001). The
 // backend owns the prompt; the app never builds one. The generation controls
-// (Characters/Mood/Length/Setting, planning/40) are optional and validated
-// server-side — client-side limits are convenience, not the guard.
+// (Characters/Mood/Length, planning/40; funnel redesign planning/50) are optional
+// and validated server-side — client-side limits are convenience, not the guard.
 type StoryRequest struct {
-	ChildName     string      `json:"childName"`
-	AgeBand       string      `json:"ageBand"`
-	SituationIDs  []string    `json:"situationIds"`
-	Interests     []string    `json:"interests"`
-	CompanionName string      `json:"companionName,omitempty"`
-	Characters    []Character `json:"characters,omitempty"`
-	Mood          string      `json:"mood,omitempty"`
-	Length        string      `json:"length,omitempty"`
-	Setting       string      `json:"setting,omitempty"`
+	ChildName    string      `json:"childName"`
+	AgeBand      string      `json:"ageBand"`
+	SituationIDs []string    `json:"situationIds"`
+	Interests    []string    `json:"interests"`
+	Characters   []Character `json:"characters,omitempty"`
+	Mood         string      `json:"mood,omitempty"`
+	Length       string      `json:"length,omitempty"`
 	// Topic is a free-text seed for tonight's story ("오늘의 이야기"). User-derived
 	// and untrusted — sanitized like the other fields. A request is valid with a
 	// topic OR at least one situationId (the app offers both).

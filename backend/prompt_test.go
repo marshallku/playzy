@@ -8,15 +8,14 @@ import (
 
 func TestBuildStoryPrompt_IncludesContextAndGuardrails(t *testing.T) {
 	req := StoryRequest{
-		ChildName:     "하준",
-		AgeBand:       "toddler",
-		SituationIDs:  []string{"bedtime", "teeth"},
-		Interests:     []string{"공룡"},
-		CompanionName: "누나",
+		ChildName:    "하준",
+		AgeBand:      "toddler",
+		SituationIDs: []string{"bedtime", "teeth"},
+		Interests:    []string{"공룡"},
 	}
 	p := buildStoryPrompt(req)
 
-	for _, want := range []string{"하준", "누나", "공룡", "잠자기", "양치하기", "안전 규칙", `"title"`, `"pages"`} {
+	for _, want := range []string{"하준", "공룡", "잠자기", "양치하기", "안전 규칙", `"title"`, `"pages"`} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing %q", want)
 		}
@@ -85,16 +84,15 @@ func TestLengthPages_OmittedPreservesAgeDefault(t *testing.T) {
 	}
 }
 
-func TestBuildStoryPrompt_MoodAndSetting(t *testing.T) {
+func TestBuildStoryPrompt_MoodAndLength(t *testing.T) {
 	p := buildStoryPrompt(StoryRequest{
 		ChildName:    "하준",
 		AgeBand:      "toddler",
 		SituationIDs: []string{"bedtime"},
 		Mood:         "adventurous",
-		Setting:      "space",
 		Length:       "long",
 	})
-	for _, want := range []string{"분위기: 모험적인", "이야기의 배경: 우주", "나이대: 2~3세"} {
+	for _, want := range []string{"분위기: 모험적인", "나이대: 2~3세"} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt missing %q", want)
 		}
@@ -118,15 +116,6 @@ func TestBuildStoryPrompt_UnknownMoodFallsBackToCozy(t *testing.T) {
 	}
 	if strings.Contains(p, "sinister-override") {
 		t.Error("raw unknown mood leaked into the prompt")
-	}
-}
-
-func TestBuildStoryPrompt_UnknownSettingOmitted(t *testing.T) {
-	p := buildStoryPrompt(StoryRequest{ChildName: "아이", AgeBand: "infant", SituationIDs: []string{"bedtime"}, Setting: "mars"})
-	// The materials backdrop line is "- 이야기의 배경: ..."; the system prompt also
-	// mentions "이야기의 배경(예: ...)" in its input description, so match the line.
-	if strings.Contains(p, "이야기의 배경: ") {
-		t.Error("unknown setting must not produce a backdrop line")
 	}
 }
 

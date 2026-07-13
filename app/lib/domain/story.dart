@@ -75,7 +75,6 @@ class StoryRequest {
     required this.situationIds,
     this.topic,
     this.interests = const [],
-    this.companionName,
     this.characters = const [],
     this.mood = StoryMood.cozy,
     this.length,
@@ -90,9 +89,9 @@ class StoryRequest {
   /// wire when null/empty.
   final String? topic;
   final List<String> interests;
-  final String? companionName;
 
-  /// Extra named characters to feature (등장인물).
+  /// Named characters to feature (등장인물), picked from the roster. This replaced
+  /// the old single companion field (planning/50).
   final List<StoryCharacter> characters;
   final StoryMood mood;
 
@@ -107,7 +106,6 @@ class StoryRequest {
         'situationIds': situationIds,
         if (topic != null && topic!.trim().isNotEmpty) 'topic': topic!.trim(),
         'interests': interests,
-        if (companionName != null) 'companionName': companionName,
         'characters': characters.map((c) => c.toJson()).toList(),
         'mood': mood.name,
         if (length != null) 'length': length!.name,
@@ -123,7 +121,6 @@ class StoryRequest {
       interests: (json['interests'] as List<dynamic>? ?? const [])
           .map((e) => e as String)
           .toList(),
-      companionName: json['companionName'] as String?,
       characters: (json['characters'] as List<dynamic>? ?? const [])
           .map((e) => StoryCharacter.fromJson(e as Map<String, dynamic>))
           .toList(),

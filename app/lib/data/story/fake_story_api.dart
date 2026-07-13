@@ -22,7 +22,6 @@ class FakeStoryApi implements StoryApi {
     final theme = (topic != null && topic.isNotEmpty)
         ? topic
         : (request.situationIds.isEmpty ? '모험' : request.situationIds.first);
-    final companion = request.companionName;
     final mood = request.mood.label; // 포근한, 신나는, …
 
     // Id folds in EVERY option (topic/mood/length/characters incl. kind) so any
@@ -42,7 +41,6 @@ class FakeStoryApi implements StoryApi {
         StoryPage(text: '$mood 밤이에요. 옛날 옛적, $name(이)가 살고 있었어요.'),
         if (topic != null && topic.isNotEmpty)
           StoryPage(text: '오늘은 "$topic" 이야기를 들려줄게요.'),
-        if (companion != null) StoryPage(text: '$name는 $companion와(과) 함께 길을 나섰어요.'),
         // Reflect the chosen characters so the demo isn't flat (planning/40).
         for (final c in request.characters)
           StoryPage(text: '${c.name}(${c.kind.label})도 함께라서 더 즐거웠어요.'),
