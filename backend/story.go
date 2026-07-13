@@ -5,17 +5,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"unicode"
 )
 
 // maxPageRunes caps a single page so a runaway model can't return a huge blob.
 const maxPageRunes = 600
-
-// unsafeTerms is a small STOPGAP denylist — NOT a substitute for the deferred
-// output-moderation pass (README). If any surfaces in child-facing text, the
-// story is replaced with the safe default rather than shown.
-var unsafeTerms = []string{"죽여", "죽음", "살인", "칼로", "피가", "자살", "kill", "blood", "suicide"}
 
 // sanitizeStoryText strips control characters, neutralizes line breaks, and
 // caps length on model-produced text before it reaches a child.
@@ -35,16 +31,6 @@ func sanitizeStoryText(s string) string {
 		s = strings.TrimSpace(string(r[:maxPageRunes]))
 	}
 	return s
-}
-
-func containsUnsafe(s string) bool {
-	low := strings.ToLower(s)
-	for _, t := range unsafeTerms {
-		if strings.Contains(low, t) {
-			return true
-		}
-	}
-	return false
 }
 
 // Character is an extra named figure to feature beyond the main child (등장인물).
@@ -111,23 +97,29 @@ func parseStory(modelText string, req StoryRequest) Story {
 	return fallbackStory(id, modelText, req)
 }
 
-// finalize sanitizes and safety-checks candidate story text, returning the
-// safe default if nothing usable survives or an unsafe term appears anywhere.
+// finalize sanitizes and moderates candidate story text, returning the gentle
+// safe default if nothing usable survives or the child-safety moderation pass
+// (moderation.go) trips anywhere in the title or pages. Moderation is fail-safe:
+// one hit replaces the WHOLE story, and the tripped category is logged for tuning.
 func finalize(id, rawTitle string, rawPages []string, req StoryRequest) Story {
 	title := sanitizeStoryText(rawTitle)
+	if cat := moderateText(title); cat != "" {
+		log.Printf("moderation: replaced story with safe default (field=title category=%s)", cat)
+		return safeStory(id, req)
+	}
 	pages := make([]StoryPage, 0, len(rawPages))
-	unsafe := containsUnsafe(title)
 	for _, t := range rawPages {
 		clean := sanitizeStoryText(t)
 		if clean == "" {
 			continue
 		}
-		if containsUnsafe(clean) {
-			unsafe = true
+		if cat := moderateText(clean); cat != "" {
+			log.Printf("moderation: replaced story with safe default (field=page category=%s)", cat)
+			return safeStory(id, req)
 		}
 		pages = append(pages, StoryPage{Text: clean})
 	}
-	if unsafe || len(pages) == 0 {
+	if len(pages) == 0 {
 		return safeStory(id, req)
 	}
 	if title == "" {

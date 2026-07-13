@@ -67,7 +67,7 @@ func TestParseStory_UnsafeContentReplacedWithSafeStory(t *testing.T) {
 	text := `{"title":"밤","pages":[{"text":"괴물이 아이를 죽여버렸어요."}]}`
 	story := parseStory(text, sampleReq)
 	for _, p := range story.Pages {
-		if containsUnsafe(p.Text) {
+		if moderateText(p.Text) != "" {
 			t.Fatalf("unsafe text reached the reader: %q", p.Text)
 		}
 	}

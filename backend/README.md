@@ -81,6 +81,12 @@ go test ./...   # prompt/parse/catalog + handler tests (mock kagi, no creds)
 - Free-tier quota + entitlements must be enforced **here** in production (ADR
   0002), not just mirrored in the app. Not yet implemented — the app's local
   gating is a stand-in.
-- Content-safety: guardrails live in the prompt (`prompt.go`); a real launch
-  should add an output moderation pass before returning a story to a child.
+- Content-safety, defense in depth: (1) prompt guardrails (`prompt.go` + the
+  system prompt), (2) a **deterministic output-moderation pass** (`moderation.go`)
+  that runs a categorized, evasion-resistant (whitespace/zero-width-normalized)
+  child-safety lexicon over the title + every page and **fail-safe** replaces the
+  whole story with the gentle default on any hit (the tripped category is logged
+  for tuning). The lexicon is severe + low-false-positive by design. A
+  **model-based** classification pass (a second AI call) is a worthwhile future
+  layer for nuance the lexicon can't capture.
 - Hosting is undecided (D5); kagi is a local dev dependency only.
