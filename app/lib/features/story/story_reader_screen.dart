@@ -57,7 +57,12 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                 ),
               ),
             ),
-            _PageDots(count: pages.length, index: _page, color: colors.primary),
+            _PageDots(
+              count: pages.length,
+              index: _page,
+              active: colors.primary,
+              inactive: colors.textTertiary,
+            ),
             _FontSlider(
               colors: colors,
               value: _fontSize,
@@ -108,8 +113,11 @@ class _ReaderBar extends StatelessWidget {
             ),
           ),
           IconButton(
+            // Moon-gold glows on the night canvas (≈12:1) but is illegible on
+            // the light cream (≈1.5:1) — use the brand periwinkle there (≈4.7:1)
+            // so the toggle clears the 3:1 UI-graphic bar in both reader modes.
             onPressed: onToggleNight,
-            color: colors.accent,
+            color: night ? colors.accent : colors.primary,
             tooltip: night ? '밝게 보기' : '어둡게 보기',
             icon: Icon(night ? Icons.dark_mode : Icons.light_mode),
           ),
@@ -144,11 +152,21 @@ class _StoryPageView extends StatelessWidget {
 }
 
 class _PageDots extends StatelessWidget {
-  const _PageDots({required this.count, required this.index, required this.color});
+  const _PageDots({
+    required this.count,
+    required this.index,
+    required this.active,
+    required this.inactive,
+  });
 
   final int count;
   final int index;
-  final Color color;
+  final Color active;
+
+  /// Inactive dots use the muted [inactive] tone (not a faded [active]) so they
+  /// still clear the 3:1 UI-graphic bar — matching the reference, where inactive
+  /// dots are `dark-muted`, not a translucent primary.
+  final Color inactive;
 
   @override
   Widget build(BuildContext context) {
@@ -164,7 +182,7 @@ class _PageDots extends StatelessWidget {
               width: i == index ? AppSizes.pageDotActive : AppSizes.pageDot,
               height: AppSizes.pageDot,
               decoration: BoxDecoration(
-                color: i == index ? color : color.withValues(alpha: 0.3),
+                color: i == index ? active : inactive,
                 borderRadius: AppRadius.pillAll,
               ),
             ),

@@ -4,7 +4,7 @@ import 'package:flutter/widgets.dart';
 /// In night mode, elevation is conveyed by a lighter surface, not shadow —
 /// use [none] there.
 abstract final class AppShadows {
-  static const Color _tint = Color(0xFF4E6FBC); // brand primary (light)
+  static const Color _tint = Color(0xFF5265C6); // brand primary (light)
 
   static List<BoxShadow> get sm => [
         BoxShadow(

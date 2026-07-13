@@ -54,10 +54,12 @@ class FunnelScaffold extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: AppRadius.pillAll,
                           child: LinearProgressIndicator(
                             value: step / kFunnelSteps,
-                            minHeight: 6,
+                            minHeight: AppSizes.progressTrack,
+                            // bgSubtle track keeps the primary fill ≥3:1 in
+                            // BOTH modes (bgAlt is too light at night, 2.74:1).
                             backgroundColor: colors.bgSubtle,
                             color: colors.primary,
                           ),

@@ -93,7 +93,7 @@ class _Greeting extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Playzy', style: AppTypography.display.copyWith(color: colors.primary)),
+          Text('Playzy', style: AppTypography.brand.copyWith(color: colors.primary)),
           const SizedBox(height: AppSpacing.sm),
           Text('아이를 위한 오늘 밤의 동화',
               style: AppTypography.body.copyWith(color: colors.textSecondary)),
