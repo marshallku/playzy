@@ -45,6 +45,16 @@ type config struct {
 	quotaStore string
 	// dbPath is the SQLite file; required when quotaStore is "sqlite".
 	dbPath string
+	// revenueCatWebhookAuth is the shared secret RevenueCat is configured to send in
+	// the Authorization header of every webhook. Empty → the webhook endpoint is
+	// disabled (404), mirroring adminToken's fail-closed posture.
+	revenueCatWebhookAuth string
+	// revenueCatAppID, when set, restricts accepted webhook events to this RevenueCat
+	// app id — defense in depth so a foreign project's event can't grant credits.
+	revenueCatAppID string
+	// revenueCatAllowSandbox accepts SANDBOX-environment purchase events. Dev/testing
+	// only; production leaves it false so a sandbox purchase never mints real credits.
+	revenueCatAllowSandbox bool
 }
 
 func loadConfig() config {
@@ -57,6 +67,10 @@ func loadConfig() config {
 		kagiProfileID: os.Getenv("KAGI_PROFILE_ID"),
 		quotaStore:    os.Getenv("PLAYZY_QUOTA_STORE"),
 		dbPath:        os.Getenv("PLAYZY_DB_PATH"),
+
+		revenueCatWebhookAuth:  os.Getenv("REVENUECAT_WEBHOOK_AUTH"),
+		revenueCatAppID:        os.Getenv("REVENUECAT_APP_ID"),
+		revenueCatAllowSandbox: os.Getenv("REVENUECAT_ALLOW_SANDBOX") == "1",
 	}
 }
 
@@ -106,6 +120,7 @@ func main() {
 	mux.HandleFunc("GET /v1/catalog/situations", srv.handleCatalog)
 	mux.HandleFunc("GET /v1/quota", srv.handleQuota)
 	mux.HandleFunc("POST /v1/credits", srv.handleGrantCredits)
+	mux.HandleFunc("POST /v1/webhooks/revenuecat", srv.handleRevenueCatWebhook)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})

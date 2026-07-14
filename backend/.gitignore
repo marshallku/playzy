@@ -1,0 +1,3 @@
+# compiled backend binary (build artifact)
+playzy-backend
+*.db

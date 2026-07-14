@@ -15,8 +15,16 @@ the provider. Today it is the thinnest viable adapter: it proxies to a local
 - `GET /v1/quota` — header `X-Device-Id` → `{freeUsed, freeLimit, credits,
   canGenerate}`. The authoritative allowance (ADR 0002).
 - `POST /v1/credits` — header `X-Device-Id`, body `{amount}` → grants credits.
-  **Dev stub:** in production this is driven by a *verified* StoreKit/RevenueCat
-  purchase webhook, never called by the client directly.
+  **Dev stub:** admin-token-gated path used for local testing. Kept alongside the
+  real webhook below until the live purchase path is exercised on TestFlight.
+- `POST /v1/webhooks/revenuecat` — the **production purchase path**. RevenueCat
+  delivers a shared-secret-authenticated event when a consumable credit pack is
+  bought; the handler grants credits idempotently on the store `transaction_id`.
+  Disabled (404) when `REVENUECAT_WEBHOOK_AUTH` is unset. Grants only
+  `NON_RENEWING_PURCHASE` events for a mapped product, bound to the configured app +
+  `PRODUCTION` environment; every other handled case is acked with 200 (RevenueCat
+  retries any non-2xx). The event's `app_user_id` is the **subject** (device id now,
+  account id after login). See ADR 0002.
 - `GET /v1/catalog/situations` — the SDUI document for the situation picker
   (ADR 0003), matching the app's bundled default.
 - `GET /healthz` — `ok`.
@@ -88,7 +96,10 @@ needed) — see `app/lib/core/env.dart`.
 | `KAGI_SERVE_URL` | `http://127.0.0.1:8921` | Where `kagi serve` is listening |
 | `PLAYZY_QUOTA_STORE` | **required** | `memory` (dev, volatile) or `sqlite` (durable). No default — a missing/unknown value is fatal, so a prod deploy can't silently boot on the restart-volatile store. |
 | `PLAYZY_DB_PATH` | — | SQLite file; **required** when `PLAYZY_QUOTA_STORE=sqlite`. |
-| `PLAYZY_ADMIN_TOKEN` | — | Guards `POST /v1/credits` (the verified-purchase webhook presents it). Empty → endpoint disabled. |
+| `PLAYZY_ADMIN_TOKEN` | — | Guards the dev-stub `POST /v1/credits`. Empty → endpoint disabled. |
+| `REVENUECAT_WEBHOOK_AUTH` | — | Shared secret RevenueCat sends in the `Authorization` header of every webhook. Empty → `POST /v1/webhooks/revenuecat` disabled (404). |
+| `REVENUECAT_APP_ID` | — | When set, only accepts webhook events for this RevenueCat app id (project isolation). |
+| `REVENUECAT_ALLOW_SANDBOX` | — | `1` accepts `SANDBOX` purchase events (dev/testing only). Unset → production purchases only. |
 
 ## Swapping the AI provider
 
