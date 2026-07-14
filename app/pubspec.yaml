@@ -17,6 +17,9 @@ dependencies:
   shared_preferences: ^2.2.3
   # HTTP client for the Playzy backend (ADR 0001)
   http: ^1.2.1
+  # Apple IAP via RevenueCat — consumable credit packs (ADR 0002 / D1). iOS only;
+  # activated at runtime behind PLAYZY_REVENUECAT_IOS_KEY + a real backend.
+  purchases_flutter: ^8.0.0
 
 dev_dependencies:
   flutter_test:

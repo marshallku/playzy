@@ -13,6 +13,18 @@ import '../../design/widgets/primary_button.dart';
 /// presentation moves to a WebView experiment surface (ADR 0003 Tier B) while
 /// the transaction stays native IAP (ADR 0002). Entitlement is read from the
 /// backend, never trusted from a client callback.
+/// Outcome of settling a purchase into the credit balance.
+enum _Settlement {
+  /// Credits are already reflected (offline mirror or dev admin grant).
+  applied,
+
+  /// Purchase accepted; the verified webhook will credit the balance shortly.
+  pending,
+
+  /// Backend present but this build has no path to grant credits.
+  unavailable,
+}
+
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
 
@@ -31,10 +43,13 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     try {
       final gateway = ref.read(paymentGatewayProvider);
       final result = await action(gateway);
-      if (result.success && grantCredits > 0) {
-        final applied = await _grantCredits(grantCredits);
-        if (!applied) {
-          // Backend mode with no dev/webhook path — don't pretend it worked.
+      // Cancelled or a failure the gateway reported without throwing — leave the
+      // paywall open, no error message (a cancel is expected user behavior).
+      if (!result.success) return;
+
+      if (grantCredits > 0) {
+        final outcome = await _settle(grantCredits);
+        if (outcome == _Settlement.unavailable) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('이 빌드에서는 결제가 아직 준비되지 않았어요.')),
@@ -42,8 +57,15 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           }
           return;
         }
+        if (outcome == _Settlement.pending && mounted) {
+          // The purchase succeeded; the verified webhook credits the balance
+          // moments later. Be honest rather than faking an immediate grant.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('구매가 완료됐어요. 크레딧이 곧 반영돼요.')),
+          );
+        }
       }
-      if (mounted && result.success && context.canPop()) context.pop();
+      if (mounted && context.canPop()) context.pop();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -55,21 +77,27 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     }
   }
 
-  /// Grants purchased credits where the quota actually lives. Returns whether
-  /// credits were actually applied:
-  /// - backend mode → the server (dev admin path), then refresh. Returns false
-  ///   when no dev token is set (real builds grant via a verified webhook).
-  /// - offline mode → the local credit mirror (always applied).
-  Future<bool> _grantCredits(int amount) async {
-    final quotaApi = ref.read(quotaApiProvider);
-    if (quotaApi != null) {
-      if (!Env.hasDevAdminToken) return false;
-      await quotaApi.grantCreditsDev(amount, Env.devAdminToken);
-      ref.invalidate(quotaStateProvider);
-      return true;
+  /// Settles a successful purchase into the authoritative balance per the app's
+  /// [PaymentMode], so a real Apple purchase is only ever credited by the verified
+  /// backend webhook — never a local grant (ADR 0002).
+  Future<_Settlement> _settle(int amount) async {
+    switch (ref.read(paymentModeProvider)) {
+      case PaymentMode.offlineLocal:
+        await ref.read(creditsProvider.notifier).add(amount);
+        return _Settlement.applied;
+      case PaymentMode.appleWebhook:
+        // Refresh authoritative quota; it reflects once RevenueCat's webhook lands.
+        ref.invalidate(quotaStateProvider);
+        return _Settlement.pending;
+      case PaymentMode.devAdmin:
+        await ref
+            .read(quotaApiProvider)!
+            .grantCreditsDev(amount, Env.devAdminToken);
+        ref.invalidate(quotaStateProvider);
+        return _Settlement.applied;
+      case PaymentMode.unavailable:
+        return _Settlement.unavailable;
     }
-    await ref.read(creditsProvider.notifier).add(amount);
-    return true;
   }
 
   @override

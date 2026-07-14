@@ -15,13 +15,24 @@ Last updated: 2026-07-15.
 - [ ] **Consumable IAP product** `credits_10` in App Store Connect
       (10 stories, provisional ₩4,900). Confirm final price/pack size (decision D1/D2).
 - [ ] **RevenueCat account** (free under $2.5k/mo tracked revenue) →
-      - [ ] iOS **public SDK API key** → give me for `--dart-define=PLAYZY_REVENUECAT_IOS_KEY`
+      - [ ] iOS **public SDK API key** → give me for `--dart-define=PLAYZY_REVENUECAT_IOS_KEY=appl_...`
+            (wired in WU2; the app uses the real Apple gateway only when this + a
+            backend URL are both set).
       - [ ] connect App Store Connect (App-Specific Shared Secret / In-App Purchase key)
       - [ ] map product `credits_10` in RevenueCat
       - [ ] configure the **webhook** → our `POST /v1/webhooks/revenuecat`, set the
             Authorization header secret → give me for `REVENUECAT_WEBHOOK_AUTH`
+            (also set `REVENUECAT_APP_ID` for project isolation).
+- [ ] Enable the **In-App Purchase capability** on the app target in Xcode /
+      App Store Connect (RevenueCat requires it; a simulator build does NOT catch a
+      missing capability).
 - [ ] **Sandbox tester** account (App Store Connect → Users) to exercise a real
       purchase before TestFlight.
+- [ ] **Install CocoaPods on the build machine** (`brew install cocoapods`). It is
+      currently NOT installed, so `purchases_flutter` (a CocoaPods-only plugin) is
+      not natively linked — the app still builds/runs in fake mode, but the real
+      RevenueCat path needs `pod install` to work. iOS min target is set to 13.0
+      (RevenueCat requirement) in `app/ios/Podfile`.
 
 ## 🔴 Blocking — needed before auth can go live
 - [ ] **Sign in with Apple** capability enabled for the app id + a **Services key**

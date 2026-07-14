@@ -17,4 +17,13 @@ abstract final class Env {
       String.fromEnvironment('PLAYZY_DEV_ADMIN_TOKEN', defaultValue: '');
 
   static bool get hasDevAdminToken => devAdminToken.isNotEmpty;
+
+  /// RevenueCat iOS public SDK key, injected via
+  /// `--dart-define=PLAYZY_REVENUECAT_IOS_KEY=appl_...`. When set (and a backend is
+  /// configured), the iOS build uses the real Apple-IAP gateway; otherwise it falls
+  /// back to the fake so the app still runs in dev/test/Android (ADR 0002).
+  static const String revenueCatIosKey =
+      String.fromEnvironment('PLAYZY_REVENUECAT_IOS_KEY', defaultValue: '');
+
+  static bool get hasRevenueCat => revenueCatIosKey.isNotEmpty;
 }

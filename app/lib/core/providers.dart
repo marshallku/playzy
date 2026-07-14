@@ -1,11 +1,16 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/catalog/catalog_api.dart';
 import '../data/catalog/http_catalog_api.dart';
 import '../data/library/story_library.dart';
+import '../data/payment/apple_payment_gateway.dart';
 import '../data/payment/fake_payment_gateway.dart';
 import '../data/payment/payment_gateway.dart';
+import '../data/payment/rc_client.dart';
 import '../data/profile/profile_repository.dart';
 import '../data/quota/quota_api.dart';
 import '../data/story/fake_story_api.dart';
@@ -55,7 +60,43 @@ final storyApiProvider = Provider<StoryApi>((ref) => Env.hasBackend
     ? HttpStoryApi(baseUrl: Env.apiBaseUrl, deviceId: ref.watch(deviceIdProvider))
     : const FakeStoryApi());
 
+/// How a purchased credit pack is settled into the authoritative balance. Derived
+/// once here so the gateway selection and the paywall's post-purchase handling can
+/// never disagree (a real Apple purchase must be settled by the webhook, never a
+/// local grant — ADR 0002).
+enum PaymentMode {
+  /// No backend: the credit balance is a local offline mirror.
+  offlineLocal,
+
+  /// Real Apple IAP via RevenueCat; the verified webhook credits the backend.
+  appleWebhook,
+
+  /// Backend present with a dev admin token: grant server credits directly (dev).
+  devAdmin,
+
+  /// Backend present but no path to grant credits in this build.
+  unavailable,
+}
+
+final paymentModeProvider = Provider<PaymentMode>((ref) {
+  if (!Env.hasBackend) return PaymentMode.offlineLocal;
+  // Real Apple IAP requires iOS + a RevenueCat key AND a backend to redeem into
+  // (fail closed: never grant locally after a real-money purchase).
+  if (!kIsWeb && Platform.isIOS && Env.hasRevenueCat) return PaymentMode.appleWebhook;
+  if (Env.hasDevAdminToken) return PaymentMode.devAdmin;
+  return PaymentMode.unavailable;
+});
+
 final paymentGatewayProvider = Provider<PaymentGateway>((ref) {
+  if (ref.watch(paymentModeProvider) == PaymentMode.appleWebhook) {
+    final rc = RevenueCatClient();
+    ref.onDispose(rc.dispose);
+    return ApplePaymentGateway(
+      rc,
+      apiKey: Env.revenueCatIosKey,
+      appUserId: ref.watch(deviceIdProvider),
+    );
+  }
   final gateway = FakePaymentGateway();
   ref.onDispose(gateway.dispose);
   return gateway;
