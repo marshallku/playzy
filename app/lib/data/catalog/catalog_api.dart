@@ -29,6 +29,8 @@ SduiDocument bundledSituationCatalog() {
     components: [
       const SduiSection(title: '요즘 이런 상황이 있나요?'),
       SduiChipGroup(chips: of(SituationKind.parenting)),
+      const SduiSection(title: '이야기에 담고 싶은 마음'),
+      SduiChipGroup(chips: of(SituationKind.value)),
       const SduiSection(title: '어떤 모험을 떠날까요?'),
       SduiChipGroup(chips: of(SituationKind.theme)),
     ],

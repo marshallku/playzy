@@ -27,14 +27,18 @@ class _EmptyCatalog implements CatalogApi {
 
 void main() {
   group('bundledSituationCatalog', () {
-    test('mirrors the default situations across two chip groups', () {
+    test('mirrors the default situations across three chip groups', () {
       final doc = bundledSituationCatalog();
       final chips = doc.components.whereType<SduiChipGroup>().expand((g) => g.chips);
       final ids = chips.map((c) => c.id).toSet();
 
-      expect(doc.components.whereType<SduiSection>(), hasLength(2));
-      expect(doc.components.whereType<SduiChipGroup>(), hasLength(2));
+      // 상황(parenting) · 마음(value) · 테마(theme)
+      expect(doc.components.whereType<SduiSection>(), hasLength(3));
+      expect(doc.components.whereType<SduiChipGroup>(), hasLength(3));
       expect(ids, kDefaultSituations.map((s) => s.id).toSet());
+      // The value axis is present and non-empty.
+      expect(kDefaultSituations.where((s) => s.kind == SituationKind.value),
+          isNotEmpty);
     });
 
     test('FakeCatalogApi returns the bundled catalog', () async {

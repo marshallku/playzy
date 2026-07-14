@@ -13,4 +13,7 @@ abstract final class AppSizes {
   /// Reader page-indicator dots.
   static const double pageDot = 8;
   static const double pageDotActive = 20;
+
+  /// Funnel progress-bar track thickness.
+  static const double progressTrack = 6;
 }

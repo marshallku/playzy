@@ -1,9 +1,10 @@
 import 'package:flutter/widgets.dart';
 
 /// Corner-radius scale. Mirrors DESIGN.md §5.1. Kids apps use large soft radii;
-/// primary buttons and selection chips use [pill].
+/// primary buttons use [pill]; selection chips use [chip] (14).
 abstract final class AppRadius {
   static const double sm = 12;
+  static const double chip = 14; // selection chips (DESIGN.md §8, ref 14px)
   static const double md = 16;
   static const double lg = 20;
   static const double xl = 24;

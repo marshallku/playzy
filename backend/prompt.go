@@ -176,17 +176,32 @@ func ageDefaultPages(ageBand string) int {
 // the base-model path — so it isn't re-sent in every request.
 func buildStoryMaterials(req StoryRequest) string {
 	labels := situationLabels()
-	situations := make([]string, 0, len(req.SituationIDs))
+	kinds := situationKinds()
+	// subjects = 상황/주제 (parenting + theme + any sanitized unknowns); values =
+	// 담고 싶은 마음 (가치). Both share one budget so a crafted request can't flood
+	// the prompt by splitting across lines.
+	subjects := make([]string, 0, len(req.SituationIDs))
+	values := make([]string, 0, len(req.SituationIDs))
+	processed := 0
 	for _, id := range req.SituationIDs {
-		if len(situations) >= maxSituations {
+		if processed >= maxSituations {
 			break
 		}
-		// Only known ids map to trusted labels; unknown ids are sanitized so a
-		// crafted id can't inject prompt instructions.
-		if label, ok := labels[id]; ok {
-			situations = append(situations, label)
-		} else if s := sanitize(id); s != "" {
-			situations = append(situations, s)
+		label, known := labels[id]
+		if !known {
+			// Unknown ids are sanitized (a crafted id can't inject instructions)
+			// and only ever treated as an untrusted subject, never a value.
+			if s := sanitize(id); s != "" {
+				subjects = append(subjects, s)
+				processed++
+			}
+			continue
+		}
+		processed++
+		if kinds[id] == "value" {
+			values = append(values, label)
+		} else {
+			subjects = append(subjects, label)
 		}
 	}
 
@@ -224,8 +239,11 @@ func buildStoryMaterials(req StoryRequest) string {
 	if len(characters) > 0 {
 		b.WriteString(fmt.Sprintf("- 등장인물: %s\n", strings.Join(characters, ", ")))
 	}
-	if len(situations) > 0 {
-		b.WriteString(fmt.Sprintf("- 오늘의 상황/주제: %s\n", strings.Join(situations, ", ")))
+	if len(subjects) > 0 {
+		b.WriteString(fmt.Sprintf("- 오늘의 상황/주제: %s\n", strings.Join(subjects, ", ")))
+	}
+	if len(values) > 0 {
+		b.WriteString(fmt.Sprintf("- 담고 싶은 마음: %s\n", strings.Join(values, ", ")))
 	}
 	b.WriteString("\n[오늘의 설정]\n")
 	b.WriteString(fmt.Sprintf("- 나이대: %s\n", ageBandLabel(req.AgeBand)))

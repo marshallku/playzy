@@ -28,11 +28,21 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   fonts:
-    # Pretendard (OFL-1.1) — bundled UI + Korean story body font (DESIGN.md §3).
+    # Pretendard (OFL-1.1) — bundled UI + Korean display font (DESIGN.md §3).
     # Variable font: weights are applied via fontWeight at runtime.
     - family: Pretendard
       fonts:
         - asset: assets/fonts/PretendardVariable.ttf
-  # NOTE: Gmarket Sans (display/brand font in DESIGN.md §3.1) is NOT bundled —
-  # its license needs review before redistribution. Display text falls back to
-  # Pretendard until the licensed asset is dropped in (docs/planning/90 — fonts).
+    # Gowun Batang (OFL-1.1) — the warm Korean serif for story reading (§3.1).
+    - family: GowunBatang
+      fonts:
+        - asset: assets/fonts/GowunBatang-Regular.ttf
+        - asset: assets/fonts/GowunBatang-Bold.ttf
+          weight: 700
+    # Fredoka (OFL-1.1) — rounded Latin face for the "Playzy" wordmark ONLY.
+    # Variable font (width+weight axes); weight applied via fontWeight.
+    - family: Fredoka
+      fonts:
+        - asset: assets/fonts/Fredoka-Variable.ttf
+  # All three families are OFL-1.1 (see assets/fonts/NOTICE.md). Gmarket Sans is
+  # no longer planned — Fredoka (bundled) owns the brand wordmark (D8 resolved).

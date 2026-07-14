@@ -7,8 +7,11 @@ abstract final class AppConstants {
   /// Entitlement that lifts the free-tier quota (ADR 0002).
   static const String proEntitlement = 'pro_monthly';
 
-  /// Recommended number of situations to pick per story (docs/planning/10).
-  static const int maxSituationsPerStory = 3;
+  /// Recommended number of picks per story across all three chip groups —
+  /// 상황 + 마음(가치) + 테마 (docs/planning/10, 60). Bumped 3→4 so a value can
+  /// ride along on top of a subject without crowding it out. The server caps
+  /// higher (`maxSituations`) — it's the real guard.
+  static const int maxSituationsPerStory = 4;
 
   /// Extra characters a story can feature (등장인물). Mirrors the backend cap
   /// (`maxCharacters`) — the server is the real guard (planning/40).
