@@ -1,0 +1,7 @@
+# Keep the build context minimal and reproducible: the prebuilt local binary,
+# the SQLite dev database, and VCS noise must never leak into the image layer.
+playzy-backend
+*.db
+*.db-*
+*_test.go
+.git

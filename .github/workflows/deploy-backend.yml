@@ -1,0 +1,97 @@
+name: "[playzy] Build & deploy backend (prd)"
+
+# playzy-backend is served from the homelab k8s cluster (maji/irang pattern):
+# build → push GHCR → bump the image tag in the marshallku/manifest repo → ArgoCD
+# syncs the new SHA. The kagi-serve sidecar and secrets live in the manifest,
+# so this workflow only ships the api image + retags the deployment.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "backend/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+# Serialize prod deploys so two rapid pushes can't finish out of order and race
+# the manifest bump — an in-flight run is cancelled the moment a newer one starts,
+# so the manifest always lands on the latest SHA (latest-wins).
+concurrency:
+  group: playzy-deploy-prd
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  API_IMAGE: ghcr.io/${{ github.repository_owner }}/playzy-backend
+
+jobs:
+  test:
+    name: Vet & build & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - run: go vet ./...
+      - run: go build -o /tmp/playzy-backend .
+      - run: go test ./...
+
+  build-push:
+    name: Build & push backend image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.API_IMAGE }}:prd
+            ${{ env.API_IMAGE }}:${{ github.sha }}
+
+  update-manifest:
+    name: Update manifest (playzy prd)
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: marshallku/manifest
+          token: ${{ secrets.MANIFEST_REPO_TOKEN }}
+
+      - name: Update image tag
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          sed -i -E "s#(image:[[:space:]]+)ghcr.io/[^[:space:]]*playzy-backend[^[:space:]]*#\1${{ env.API_IMAGE }}:${SHA}#" \
+            kubernetes/service/playzy/api/deployment.yaml
+
+      - name: Commit and push
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "deploy(playzy): update image tag to ${SHA:0:7}"
+          git push
