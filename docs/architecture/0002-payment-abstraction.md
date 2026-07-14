@@ -97,6 +97,24 @@ consumable credits, per-device, authoritative). Real IAP purchase → server
 credit grant runs via a verified StoreKit/RevenueCat webhook (Phase 5 M3); the
 backend's `POST /v1/credits` is the dev stub for that path.
 
+### Durable, crash-safe quota (2026-07-14)
+
+The authoritative store is now **durable and crash-safe** (`backend/quota.go`,
+`quota_sqlite.go`): a **reserve → commit/release** ledger (a pending hold is
+placed before generating, committed only once the story is delivered, released
+on failure; an abandoned hold auto-expires via TTL so it is never a permanent
+charge), **idempotent** credit grants keyed on the purchase id, and a pure-Go
+SQLite backend selected fail-closed via `PLAYZY_QUOTA_STORE`. Everything sits
+behind one `QuotaStore` interface, so Postgres (horizontal scale, D5) is a drop-in.
+
+This is the **persistence foundation for accounts**: today entitlements key on the
+client-selected `X-Device-Id` (durable *per-device* accounting, resettable by
+rotating the id). The **next WU adds social login** (Apple — mandatory under
+Guideline 4.8 once any third-party login is offered — plus Google + Kakao; no
+email/password), keying entitlements to a verified identity and migrating a
+device's quota/credits to the account on link. Login stays **optional/anonymous-
+first** (Guideline 5.1.1(v) forbids forcing account creation for core features).
+
 ## Consequences
 
 - We don't fight Apple; iOS ships approvably.

@@ -25,11 +25,30 @@ the provider. Today it is the thinnest viable adapter: it proxies to a local
 
 The backend is the **authoritative** enforcer: per `X-Device-Id`, a free tier
 (3 stories) then consumable credits (credit-packs-only, D1 — no subscription).
-Generation reserves quota **before** calling the AI and refunds on failure, so a
-failed story is never charged and the limit can't be bypassed client-side. The
-app's local counters are only an offline mirror. `InMemoryQuotaStore` is
-dev-only — production must back it with a shared store (Redis/DB) so quota
-survives restarts and scales horizontally.
+The app's local counters are only an offline mirror.
+
+**Reserve → commit/release ledger.** A generation places a *pending hold* before
+calling the AI and only **commits** it once the story is delivered; a failed or
+abandoned generation is **released** (never charged), and concurrent in-flight
+holds can't over-spend. A hold that is never committed (e.g. a crash) auto-expires
+after a TTL, so it is never a permanent charge, and a *detected* delivery failure
+releases the hold. A residual window remains — a successful response write does
+not prove the client received the story (net/http may buffer; the connection can
+drop) — so a rare buffered-but-undelivered story can be charged. It is bounded to
+a single unit and is irreducible at this layer: exactly-once ("charged iff
+delivered") needs request idempotency + a client-confirmed delivery step, which
+arrives with server-side story persistence in a later WU. Credit grants are **idempotent** on a key (the verified
+purchase id in production), so a redelivered purchase webhook grants once.
+
+**Storage.** `memory` is dev-only (volatile). `sqlite` (`PLAYZY_QUOTA_STORE=sqlite`
++ `PLAYZY_DB_PATH`) is durable and crash-safe, pure-Go (no cgo). Both sit behind
+one `QuotaStore` interface, so production swaps in Postgres (horizontal scale, a
+D5/hosting decision) without touching handlers.
+
+**Scope.** This is durable **per-device accounting**, not unbypassable
+enforcement: `X-Device-Id` is client-selected and resettable until accounts
+(Apple/Google/Kakao login) land in the next WU and key entitlements to a verified
+identity.
 
 ## Run (local dev)
 
@@ -38,8 +57,12 @@ survives restarts and scales horizontally.
 #    Needs your Kagi credentials (KAGI_EMAIL/KAGI_PASSWORD or KAGI_SESSION).
 kagi serve -addr 127.0.0.1:8921 &
 
-# 2) Start the Playzy backend (defaults shown).
-KAGI_SERVE_URL=http://127.0.0.1:8921 PLAYZY_ADDR=:8080 go run .
+# 2) Start the Playzy backend. PLAYZY_QUOTA_STORE is REQUIRED (fail-closed, no
+#    default): `memory` for dev (volatile) or `sqlite` for durable quota.
+PLAYZY_QUOTA_STORE=memory KAGI_SERVE_URL=http://127.0.0.1:8921 PLAYZY_ADDR=:8080 go run .
+
+# Durable quota that survives restarts (reserve→commit ledger in a SQLite file):
+PLAYZY_QUOTA_STORE=sqlite PLAYZY_DB_PATH=./playzy.db KAGI_SERVE_URL=http://127.0.0.1:8921 go run .
 
 # 3) Point the app at it. The app then reads the authoritative quota from
 #    GET /v1/quota, sends X-Device-Id, and shows the paywall on 402.
@@ -49,7 +72,7 @@ flutter run --dart-define=PLAYZY_API_BASE_URL=http://localhost:8080
 # To also exercise the PAID flow end-to-end against the local backend, run the
 # backend with an admin token and give the app the same token so the paywall can
 # grant server credits (dev only — in prod a verified purchase webhook does this):
-#   PLAYZY_ADMIN_TOKEN=devsecret KAGI_SERVE_URL=... go run .
+#   PLAYZY_QUOTA_STORE=memory PLAYZY_ADMIN_TOKEN=devsecret KAGI_SERVE_URL=... go run .
 #   flutter run --dart-define=PLAYZY_API_BASE_URL=http://localhost:8080 \
 #               --dart-define=PLAYZY_DEV_ADMIN_TOKEN=devsecret
 ```
@@ -63,6 +86,9 @@ needed) — see `app/lib/core/env.dart`.
 | --- | --- | --- |
 | `PLAYZY_ADDR` | `:8080` | Listen address |
 | `KAGI_SERVE_URL` | `http://127.0.0.1:8921` | Where `kagi serve` is listening |
+| `PLAYZY_QUOTA_STORE` | **required** | `memory` (dev, volatile) or `sqlite` (durable). No default — a missing/unknown value is fatal, so a prod deploy can't silently boot on the restart-volatile store. |
+| `PLAYZY_DB_PATH` | — | SQLite file; **required** when `PLAYZY_QUOTA_STORE=sqlite`. |
+| `PLAYZY_ADMIN_TOKEN` | — | Guards `POST /v1/credits` (the verified-purchase webhook presents it). Empty → endpoint disabled. |
 
 ## Swapping the AI provider
 
@@ -78,9 +104,10 @@ go test ./...   # prompt/parse/catalog + handler tests (mock kagi, no creds)
 
 ## Notes / follow-ups
 
-- Free-tier quota + entitlements must be enforced **here** in production (ADR
-  0002), not just mirrored in the app. Not yet implemented — the app's local
-  gating is a stand-in.
+- Free-tier quota + entitlements are enforced **here** (ADR 0002): authoritative
+  reserve→commit ledger, durable via SQLite. Still to do for a real launch:
+  account-scoped entitlements (so quota can't be reset by rotating `X-Device-Id`)
+  and the Postgres backend for horizontal scale.
 - Content-safety, defense in depth: (1) prompt guardrails (`prompt.go` + the
   system prompt), (2) a **deterministic output-moderation pass** (`moderation.go`)
   that runs a categorized, evasion-resistant (whitespace/zero-width-normalized)

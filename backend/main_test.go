@@ -11,7 +11,7 @@ import (
 
 func newTestServer(kagiURL string) *server {
 	return &server{
-		cfg:   config{kagiURL: kagiURL, timeout: 5 * time.Second, adminToken: "test-admin"},
+		cfg:   config{kagiURL: kagiURL, timeout: 5 * time.Second, adminToken: "test-admin", quotaStore: "memory"},
 		http:  &http.Client{Timeout: 5 * time.Second},
 		quota: NewInMemoryQuotaStore(),
 	}
@@ -220,7 +220,7 @@ func TestHandleStories_BlankSituationIdsIs400(t *testing.T) {
 	}
 }
 
-func TestHandleStories_KagiDownIs502AndRefunds(t *testing.T) {
+func TestHandleStories_KagiDownIs502AndReleases(t *testing.T) {
 	srv := newTestServer("http://127.0.0.1:0") // nothing listening
 	req := storyRequest(`{"childName":"하준","situationIds":["bedtime"]}`, "dev1")
 	rec := httptest.NewRecorder()
@@ -230,9 +230,13 @@ func TestHandleStories_KagiDownIs502AndRefunds(t *testing.T) {
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502", rec.Code)
 	}
-	// A failed generation must be refunded — the free slot is not consumed.
-	if got := srv.quota.State("dev1").FreeUsed; got != 0 {
-		t.Fatalf("free slot not refunded after failure: used = %d", got)
+	// A failed generation releases its hold — the free slot is not consumed, and
+	// the device can immediately try again.
+	if got := mustState(t, srv.quota, "dev1").FreeUsed; got != 0 {
+		t.Fatalf("free slot not released after failure: used = %d", got)
+	}
+	if _, err := srv.quota.Reserve("dev1"); err != nil {
+		t.Fatalf("device blocked after a failed generation: %v", err)
 	}
 }
 

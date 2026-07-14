@@ -15,7 +15,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -37,6 +39,12 @@ type config struct {
 	// send the base model. Account-specific, so it has no committed default; set
 	// KAGI_PROFILE_ID to enable.
 	kagiProfileID string
+	// quotaStore selects the authoritative quota backend: "memory" (dev) or
+	// "sqlite" (durable). REQUIRED and fail-closed — there is no default, so a
+	// prod deploy that omits it can't silently boot on the restart-volatile store.
+	quotaStore string
+	// dbPath is the SQLite file; required when quotaStore is "sqlite".
+	dbPath string
 }
 
 func loadConfig() config {
@@ -47,6 +55,29 @@ func loadConfig() config {
 		adminToken:    os.Getenv("PLAYZY_ADMIN_TOKEN"),
 		kagiModel:     envOr("KAGI_MODEL", "claude-5-sonnet"),
 		kagiProfileID: os.Getenv("KAGI_PROFILE_ID"),
+		quotaStore:    os.Getenv("PLAYZY_QUOTA_STORE"),
+		dbPath:        os.Getenv("PLAYZY_DB_PATH"),
+	}
+}
+
+// newQuotaStore builds the authoritative store from config, fail-closed: an
+// unset/unknown selector is a fatal misconfiguration (never a silent fallback to
+// a data-losing store). Returns the store and a close func.
+func newQuotaStore(cfg config) (QuotaStore, func() error, error) {
+	switch cfg.quotaStore {
+	case "memory":
+		return NewInMemoryQuotaStore(), func() error { return nil }, nil
+	case "sqlite":
+		if cfg.dbPath == "" {
+			return nil, nil, errors.New("PLAYZY_QUOTA_STORE=sqlite requires PLAYZY_DB_PATH")
+		}
+		st, err := OpenSQLiteQuotaStore(cfg.dbPath)
+		if err != nil {
+			return nil, nil, err
+		}
+		return st, st.Close, nil
+	default:
+		return nil, nil, fmt.Errorf("PLAYZY_QUOTA_STORE must be 'memory' or 'sqlite' (got %q)", cfg.quotaStore)
 	}
 }
 
@@ -59,10 +90,15 @@ func envOr(key, fallback string) string {
 
 func main() {
 	cfg := loadConfig()
+	store, closeStore, err := newQuotaStore(cfg)
+	if err != nil {
+		log.Fatalf("quota store: %v", err)
+	}
+
 	srv := &server{
 		cfg:   cfg,
 		http:  &http.Client{Timeout: cfg.timeout},
-		quota: NewInMemoryQuotaStore(),
+		quota: store,
 	}
 
 	mux := http.NewServeMux()
@@ -74,9 +110,30 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	log.Printf("playzy backend on %s → kagi %s", cfg.addr, cfg.kagiURL)
-	if err := http.ListenAndServe(cfg.addr, mux); err != nil {
-		log.Fatal(err)
+	httpSrv := &http.Server{Addr: cfg.addr, Handler: mux}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		log.Printf("playzy backend on %s → kagi %s (quota store: %s)", cfg.addr, cfg.kagiURL, cfg.quotaStore)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("listen: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	stop() // restore default signal handling so a second signal force-quits
+	log.Print("shutting down…")
+
+	// Fresh, bounded context (the signal ctx is already cancelled) so shutdown
+	// can actually drain in-flight requests before the DB is closed.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown: %v", err)
+	}
+	if err := closeStore(); err != nil {
+		log.Printf("close store: %v", err)
 	}
 }
 
@@ -90,6 +147,36 @@ type server struct {
 // locally-generated id; a real launch pairs this with account auth.
 const deviceHeader = "X-Device-Id"
 
+// maxDeviceIDLen bounds the client-supplied id so it can't be used to write
+// unbounded rows / exhaust storage in the durable store. The app's id is a
+// 32-char hex string, so this is generous.
+const maxDeviceIDLen = 128
+
+// requestDeviceID validates and returns the caller's device id, or writes a 400
+// and returns ok=false. Bounding length + charset keeps a crafted header from
+// growing the store without limit.
+func requestDeviceID(w http.ResponseWriter, r *http.Request) (string, bool) {
+	id := strings.TrimSpace(r.Header.Get(deviceHeader))
+	if id == "" {
+		httpError(w, http.StatusBadRequest, deviceHeader+" header is required")
+		return "", false
+	}
+	if len(id) > maxDeviceIDLen || !isPrintableASCII(id) {
+		httpError(w, http.StatusBadRequest, deviceHeader+" is malformed")
+		return "", false
+	}
+	return id, true
+}
+
+func isPrintableASCII(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 	// Bound the request body so a crafted payload (e.g. a huge character list)
 	// can't exhaust memory before validation (planning/40, C1).
@@ -99,9 +186,8 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	deviceID := strings.TrimSpace(r.Header.Get(deviceHeader))
-	if deviceID == "" {
-		httpError(w, http.StatusBadRequest, deviceHeader+" header is required")
+	deviceID, ok := requestDeviceID(w, r)
+	if !ok {
 		return
 	}
 	req.ChildName = strings.TrimSpace(req.ChildName)
@@ -115,10 +201,11 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authoritative quota (ADR 0002): reserve before generating, refund on
-	// failure — a failed generation is never charged, and it can't be bypassed
-	// client-side.
-	c, err := s.quota.Reserve(deviceID)
+	// Authoritative quota (ADR 0002): place a pending hold before generating —
+	// commit only once the story is delivered, release on failure. A failed or
+	// abandoned generation is never charged, and it can't be bypassed
+	// client-side. Persistence + crash-safety live in the store (quota_sqlite.go).
+	resID, err := s.quota.Reserve(deviceID)
 	if errors.Is(err, errQuotaExceeded) {
 		httpError(w, http.StatusPaymentRequired, "free stories used up — purchase credits to continue")
 		return
@@ -140,7 +227,7 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := s.callAI(r.Context(), prompt)
 	if err != nil {
-		s.quota.Refund(deviceID, c)
+		s.quota.Release(resID)
 		log.Printf("callAI: %v", err)
 		httpError(w, http.StatusBadGateway, "story generation failed")
 		return
@@ -148,17 +235,40 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 
 	story := parseStory(text, req)
 	story.CreatedAt = time.Now().UTC().Format(time.RFC3339)
-	writeJSON(w, http.StatusOK, story)
+	if err := writeJSON(w, http.StatusOK, story); err != nil {
+		// The client vanished before receiving the story — release the hold
+		// rather than charge for a story that wasn't delivered.
+		s.quota.Release(resID)
+		log.Printf("deliver story: %v", err)
+		return
+	}
+
+	// Charge only after writing the story: an abandoned/failed generation is never
+	// charged, and a *detected* delivery failure (above) releases the hold. A
+	// residual window remains — a successful Encode doesn't prove client receipt
+	// (net/http may buffer; the connection can still drop), so a rare
+	// buffered-but-undelivered story can be charged. It's bounded to a single unit
+	// and is irreducible here: "charged iff delivered" needs request idempotency +
+	// a client-confirmed delivery step, which arrives with server-side story
+	// persistence in a later WU.
+	if err := s.quota.Commit(resID); err != nil {
+		log.Printf("quota commit %s: %v", resID, err)
+	}
 }
 
 // GET /v1/quota — the app reads authoritative remaining allowance.
 func (s *server) handleQuota(w http.ResponseWriter, r *http.Request) {
-	deviceID := strings.TrimSpace(r.Header.Get(deviceHeader))
-	if deviceID == "" {
-		httpError(w, http.StatusBadRequest, deviceHeader+" header is required")
+	deviceID, ok := requestDeviceID(w, r)
+	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.quota.State(deviceID))
+	st, err := s.quota.State(deviceID)
+	if err != nil {
+		log.Printf("quota state: %v", err)
+		httpError(w, http.StatusInternalServerError, "quota check failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 // POST /v1/credits — grant purchased credits. Privileged: requires the admin
@@ -173,20 +283,47 @@ func (s *server) handleGrantCredits(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	deviceID := strings.TrimSpace(r.Header.Get(deviceHeader))
-	if deviceID == "" {
-		httpError(w, http.StatusBadRequest, deviceHeader+" header is required")
+	deviceID, ok := requestDeviceID(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
-		Amount int `json:"amount"`
+		Amount         int    `json:"amount"`
+		IdempotencyKey string `json:"idempotencyKey"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Amount <= 0 {
-		httpError(w, http.StatusBadRequest, "positive amount required")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Amount <= 0 || body.Amount > maxGrant {
+		httpError(w, http.StatusBadRequest, fmt.Sprintf("amount must be between 1 and %d", maxGrant))
 		return
 	}
-	s.quota.AddCredits(deviceID, body.Amount)
-	writeJSON(w, http.StatusOK, s.quota.State(deviceID))
+	// The real verified-purchase webhook always supplies the purchase id as the
+	// idempotency key, so a redelivered webhook grants once. Requiring it at this
+	// trust boundary prevents a retried keyless grant from re-crediting. Keyless
+	// is a convenience allowed ONLY for the in-memory (dev) store — production
+	// runs sqlite and must supply the key.
+	key := strings.TrimSpace(body.IdempotencyKey)
+	if key == "" {
+		if s.cfg.quotaStore != "memory" {
+			httpError(w, http.StatusBadRequest, "idempotencyKey is required")
+			return
+		}
+		key = newReservationID()
+	}
+	if err := s.quota.AddCredits(deviceID, body.Amount, key); err != nil {
+		if errors.Is(err, errGrantConflict) {
+			httpError(w, http.StatusConflict, "idempotency key reused with a different grant")
+			return
+		}
+		log.Printf("quota add credits: %v", err)
+		httpError(w, http.StatusInternalServerError, "credit grant failed")
+		return
+	}
+	st, err := s.quota.State(deviceID)
+	if err != nil {
+		log.Printf("quota state: %v", err)
+		httpError(w, http.StatusInternalServerError, "quota check failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 func (s *server) handleCatalog(w http.ResponseWriter, _ *http.Request) {
@@ -250,14 +387,16 @@ func extractKagiText(raw []byte) (string, error) {
 	return "", fmt.Errorf("no text field in kagi response")
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+// writeJSON writes v as the response body and returns the encode/write error so
+// a caller at a charge boundary can tell whether delivery actually succeeded.
+func writeJSON(w http.ResponseWriter, status int, v any) error {
 	w.Header().Set("content-type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	return json.NewEncoder(w).Encode(v)
 }
 
 func httpError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+	_ = writeJSON(w, status, map[string]string{"error": msg})
 }
 
 // nonEmpty drops blank/whitespace-only entries from a string slice.
