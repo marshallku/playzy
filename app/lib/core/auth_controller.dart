@@ -23,7 +23,10 @@ class AuthState {
   String? get token => session?.token;
   String? get accountId => session?.accountId;
 
-  AuthState copyWith({AuthSession? session, bool clearSession = false, bool? identityReady}) =>
+  AuthState copyWith(
+          {AuthSession? session,
+          bool clearSession = false,
+          bool? identityReady}) =>
       AuthState(
         session: clearSession ? null : (session ?? this.session),
         identityReady: identityReady ?? this.identityReady,
@@ -31,16 +34,19 @@ class AuthState {
 }
 
 /// Secure (Keychain) session store. Overridden with a fake in tests.
-final secureSessionStoreProvider =
-    Provider<SessionStore>((ref) => SecureSessionStore(const FlutterSecureStorage()));
+final secureSessionStoreProvider = Provider<SessionStore>(
+    (ref) => SecureSessionStore(const FlutterSecureStorage()));
 
 /// Backend auth client — non-null only when a backend is configured.
-final authApiProvider = Provider<AuthApi?>((ref) =>
-    Env.hasBackend ? HttpAuthApi(baseUrl: Env.apiBaseUrl, client: ref.watch(httpClientProvider)) : null);
+final authApiProvider = Provider<AuthApi?>((ref) => Env.hasBackend
+    ? HttpAuthApi(
+        baseUrl: Env.apiBaseUrl, client: ref.watch(httpClientProvider))
+    : null);
 
 /// Native provider sign-in. Real SDK impls land in WU5b; until then the button flow
 /// isn't wired, so the placeholder is never invoked.
-final socialSignInProvider = Provider<SocialSignIn>((ref) => const UnsupportedSocialSignIn());
+final socialSignInProvider =
+    Provider<SocialSignIn>((ref) => const UnsupportedSocialSignIn());
 
 /// The session hydrated in main() (read from secure storage + validated) before the
 /// first frame, so [authHeadersProvider] is correct immediately. Overridden in main().
@@ -104,8 +110,10 @@ class AuthController extends Notifier<AuthState> {
       throw const AuthException('sign-in requires a backend');
     }
     final nonce = await api.requestNonce();
-    final cred = await ref.read(socialSignInProvider).signIn(kind, rawNonce: nonce);
-    final session = await api.signIn(provider: kind.name, idToken: cred.idToken, nonce: nonce);
+    final cred =
+        await ref.read(socialSignInProvider).signIn(kind, rawNonce: nonce);
+    final session = await api.signIn(
+        provider: kind.name, idToken: cred.idToken, nonce: nonce);
 
     // Persist FIRST and do NOT swallow a write failure: publishing a signed-in state
     // that didn't persist would silently drop the session on the next launch. If the
@@ -128,7 +136,9 @@ class AuthController extends Notifier<AuthState> {
     final token = state.session?.token;
     try {
       if (token != null) {
-        await ref.read(profileSyncProvider)?.reconcile(() => state.session?.token == token);
+        await ref
+            .read(profileSyncProvider)
+            ?.reconcile(() => state.session?.token == token);
       }
     } catch (_) {}
     ref.invalidate(profileControllerProvider);
@@ -169,8 +179,19 @@ class AuthController extends Notifier<AuthState> {
         final api = ref.read(authApiProvider);
         final token = state.token;
         if (api != null && token != null) {
+          // A backend delete that throws (network/5xx) stops here — stay signed in so
+          // the user can retry; nothing local is torn down yet.
           await api.deleteAccount(token);
         }
+        // Local teardown uses the SAME required-clears semantics as sign-out: both the
+        // synced-doc clear (leak safety — a lingering doc must never seed a later
+        // account) and the session clear (no restored token) MUST succeed. If either
+        // fails, delete fails loud and the account screen surfaces it for retry; the
+        // transient "backend-deleted but still locally signed in" state self-heals via
+        // the token-scoped 401 handler and main()'s _hydrateSession (GET /v1/me → 401 →
+        // discard). A best-effort force-signed-out was rejected in review: swallowing
+        // the clears would weaken leak safety and could restore the token on a
+        // 5xx/offline launch.
         await _signOut();
       });
 

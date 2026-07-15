@@ -23,57 +23,80 @@ class HomeScreen extends ConsumerWidget {
     // never synthesize an allowance that isn't real.
     final quota = ref.watch(quotaStateProvider).valueOrNull;
     // Recent tales, most-recent-first (empty while loading or if none saved).
-    final recent = ref.watch(recentStoriesProvider).valueOrNull ?? const <Story>[];
+    final recent =
+        ref.watch(recentStoriesProvider).valueOrNull ?? const <Story>[];
 
     return Scaffold(
       body: SafeArea(
-        child: profile.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => _CenteredMessage('문제가 생겼어요: $e', isError: true),
-          data: (child) => ListView(
-            padding: const EdgeInsets.all(AppSpacing.screenEdge),
-            children: [
-              const SizedBox(height: AppSpacing.xxl),
-              _Greeting(child: child),
-              const SizedBox(height: AppSpacing.xxl),
-              if (quota != null) ...[
-                _QuotaCard(quota: quota),
-                const SizedBox(height: AppSpacing.lg),
-              ],
-              PrimaryButton(
-                label: child != null ? '오늘의 동화 만들기' : '아이 정보 입력하고 시작하기',
-                onPressed: () {
-                  if (child == null) {
-                    context.push(Routes.profile);
-                    return;
-                  }
-                  // The ONE reset point (fresh entry): start every story from a
-                  // clean draft, so a prior run's choices never leak in (C5).
-                  ref.read(storyDraftProvider.notifier).reset();
-                  context.push(Routes.createTopic);
-                },
+        // The account entry sits ABOVE profile.when so sign-out / delete stay reachable
+        // even while the profile is loading or errored (sign-in reloads the profile
+        // controller, so it must not gate account access).
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                    top: AppSpacing.sm, right: AppSpacing.sm),
+                child: IconButton(
+                  icon: const Icon(Icons.account_circle_outlined),
+                  tooltip: '계정',
+                  onPressed: () => context.push(Routes.account),
+                ),
               ),
-              if (child != null)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+            ),
+            Expanded(
+              child: profile.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) =>
+                    _CenteredMessage('문제가 생겼어요: $e', isError: true),
+                data: (child) => ListView(
+                  padding: const EdgeInsets.all(AppSpacing.screenEdge),
                   children: [
-                    TextButton(
-                      onPressed: () => context.push(Routes.profile),
-                      child: const Text('아이 정보 수정'),
+                    const SizedBox(height: AppSpacing.xxl),
+                    _Greeting(child: child),
+                    const SizedBox(height: AppSpacing.xxl),
+                    if (quota != null) ...[
+                      _QuotaCard(quota: quota),
+                      const SizedBox(height: AppSpacing.lg),
+                    ],
+                    PrimaryButton(
+                      label: child != null ? '오늘의 동화 만들기' : '아이 정보 입력하고 시작하기',
+                      onPressed: () {
+                        if (child == null) {
+                          context.push(Routes.profile);
+                          return;
+                        }
+                        // The ONE reset point (fresh entry): start every story from a
+                        // clean draft, so a prior run's choices never leak in (C5).
+                        ref.read(storyDraftProvider.notifier).reset();
+                        context.push(Routes.createTopic);
+                      },
                     ),
-                    TextButton(
-                      onPressed: () => context.push(Routes.roster),
-                      child: const Text('등장인물 보관함'),
-                    ),
+                    if (child != null)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          TextButton(
+                            onPressed: () => context.push(Routes.profile),
+                            child: const Text('아이 정보 수정'),
+                          ),
+                          TextButton(
+                            onPressed: () => context.push(Routes.roster),
+                            child: const Text('등장인물 보관함'),
+                          ),
+                        ],
+                      ),
+                    if (child != null && recent.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.x4l),
+                      _RecentStories(stories: recent),
+                    ],
+                    const SizedBox(height: AppSpacing.xxl),
                   ],
                 ),
-              if (child != null && recent.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.x4l),
-                _RecentStories(stories: recent),
-              ],
-              const SizedBox(height: AppSpacing.xxl),
-            ],
-          ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -93,7 +116,8 @@ class _Greeting extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Playzy', style: AppTypography.brand.copyWith(color: colors.primary)),
+          Text('Playzy',
+              style: AppTypography.brand.copyWith(color: colors.primary)),
           const SizedBox(height: AppSpacing.sm),
           Text('아이를 위한 오늘 밤의 동화',
               style: AppTypography.body.copyWith(color: colors.textSecondary)),
@@ -141,10 +165,12 @@ class _QuotaCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(_label,
-                    style: AppTypography.h3.copyWith(color: colors.textPrimary)),
+                    style:
+                        AppTypography.h3.copyWith(color: colors.textPrimary)),
                 const SizedBox(height: AppSpacing.xs),
                 Text('잠들기 전 포근한 이야기 한 편',
-                    style: AppTypography.caption.copyWith(color: colors.textSecondary)),
+                    style: AppTypography.caption
+                        .copyWith(color: colors.textSecondary)),
               ],
             ),
           ),
@@ -207,13 +233,15 @@ class _StoryCard extends StatelessWidget {
                     Text(story.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AppTypography.body.copyWith(color: colors.textPrimary)),
+                        style: AppTypography.body
+                            .copyWith(color: colors.textPrimary)),
                     if (preview.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.xs),
                       Text(preview,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTypography.caption.copyWith(color: colors.textSecondary)),
+                          style: AppTypography.caption
+                              .copyWith(color: colors.textSecondary)),
                     ],
                   ],
                 ),
@@ -241,8 +269,8 @@ class _CenteredMessage extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.screenEdge),
         child: Text(text,
             textAlign: TextAlign.center,
-            style: AppTypography.body
-                .copyWith(color: isError ? colors.error : colors.textSecondary)),
+            style: AppTypography.body.copyWith(
+                color: isError ? colors.error : colors.textSecondary)),
       ),
     );
   }

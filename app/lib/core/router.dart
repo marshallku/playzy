@@ -6,6 +6,8 @@ import '../features/child_profile/child_profile_screen.dart';
 import '../features/create/create_cast_screen.dart';
 import '../features/create/create_tone_screen.dart';
 import '../features/create/create_topic_screen.dart';
+import '../features/auth/account_screen.dart';
+import '../features/auth/login_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/paywall/paywall_screen.dart';
 import '../features/roster/roster_screen.dart';
@@ -25,6 +27,10 @@ abstract final class Routes {
   static const generating = '/generating';
   static const story = '/story';
   static const paywall = '/paywall';
+  // Auth (WU5): login is launch-required (account sync from launch). The account
+  // screen is the entry to sign out / delete.
+  static const login = '/login';
+  static const account = '/account';
 }
 
 /// The router is provided (not a global singleton) so each ProviderScope — the
@@ -38,9 +44,7 @@ GoRouter createAppRouter() => GoRouter(
         GoRoute(
             path: Routes.profile,
             builder: (_, __) => const ChildProfileScreen()),
-        GoRoute(
-            path: Routes.roster,
-            builder: (_, __) => const RosterScreen()),
+        GoRoute(path: Routes.roster, builder: (_, __) => const RosterScreen()),
         GoRoute(
             path: Routes.createTopic,
             builder: (_, __) => const CreateTopicScreen()),
@@ -62,5 +66,8 @@ GoRouter createAppRouter() => GoRouter(
         ),
         GoRoute(
             path: Routes.paywall, builder: (_, __) => const PaywallScreen()),
+        GoRoute(path: Routes.login, builder: (_, __) => const LoginScreen()),
+        GoRoute(
+            path: Routes.account, builder: (_, __) => const AccountScreen()),
       ],
     );
