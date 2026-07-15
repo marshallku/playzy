@@ -38,6 +38,16 @@ Last updated: 2026-07-15.
 ## 🔴 Blocking — needed before auth can go live
 Decision (2026-07-15): v1 supports **Apple + Kakao + Google** login. All three verify
 via OIDC id_token; I need each provider's **client id (audience)** to validate tokens.
+
+> **App status:** the login + account UI shell is DONE (commit `9600baf`) — login screen
+> (3 provider buttons → tested AuthController), account screen (logout / delete-account),
+> home entry, all widget-tested. What's still blocked is the **native credential fetch**
+> behind the `SocialSignIn` seam (real per-provider SDKs) — needs the client ids below,
+> iOS native config (Info.plist / entitlements / URL schemes), AND **CocoaPods installed**
+> on the build machine (`brew install cocoapods` — currently missing, so pod-based plugins
+> can't build). The **mandatory paywall login-gate** ("login-then-purchase") is intentionally
+> NOT enabled yet: turning it on before native login works would break anonymous purchase.
+
 - [ ] **Sign in with Apple** capability enabled for the app id; give me the **Services
       ID / client id** (audience). (Backend verifies Apple's id_token against Apple's
       JWKS — no .p8 needed for id_token verification; the .p8 Services key is only
