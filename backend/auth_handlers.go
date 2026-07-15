@@ -60,18 +60,9 @@ func (s *server) completeOIDCLogin(w http.ResponseWriter, r *http.Request, p oid
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	claims, err := s.jwks.verifyIDToken(ctx, p, idToken, now)
-	if err != nil {
-		httpError(w, http.StatusUnauthorized, "invalid id token")
-		return
-	}
-	// The token's nonce claim must be sha256(the raw nonce we issued).
-	if !nonceHashMatches(rawNonce, claims.Nonce) {
-		httpError(w, http.StatusUnauthorized, "nonce mismatch")
-		return
-	}
-	// Consume the nonce atomically and LAST, so a valid token can't be replayed and a
-	// bad/expired token doesn't burn a nonce before the checks above.
+	// Consume the nonce FIRST, so it is a true one-shot challenge: every attempt —
+	// even one with a malformed or mismatched token — burns it, leaving no window to
+	// retry token verification against the same server-issued nonce (codex review).
 	ok, err := s.nonces.ConsumeNonce(rawNonce, now)
 	if err != nil {
 		log.Printf("consume nonce: %v", err)
@@ -80,6 +71,18 @@ func (s *server) completeOIDCLogin(w http.ResponseWriter, r *http.Request, p oid
 	}
 	if !ok {
 		httpError(w, http.StatusUnauthorized, "nonce expired or already used")
+		return
+	}
+
+	claims, err := s.jwks.verifyIDToken(ctx, p, idToken, now)
+	if err != nil {
+		httpError(w, http.StatusUnauthorized, "invalid id token")
+		return
+	}
+	// The token's nonce claim must be sha256(the raw nonce we issued) — this binds
+	// the (now-consumed) challenge to this specific token.
+	if !nonceHashMatches(rawNonce, claims.Nonce) {
+		httpError(w, http.StatusUnauthorized, "nonce mismatch")
 		return
 	}
 
