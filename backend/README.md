@@ -42,6 +42,13 @@ the provider. Today it is the thinnest viable adapter: it proxies to a local
   `(issuer, subject)`, so the same person via different providers is distinct until
   account linking lands.
 - `GET /v1/me` — header `Authorization: Bearer <session>` → `{id, createdAt}`.
+- `GET /v1/profile` · `PUT /v1/profile` · `GET /v1/roster` · `PUT /v1/roster` — Bearer.
+  Account-scoped sync of the app's ChildProfile + character roster (WU6): GET returns
+  `{"doc": <string>}` (or `{"doc": null}` when never synced); PUT takes `{"doc":
+  <string>}` → `204`. The document is an **opaque UTF-8 string** (the backend never
+  parses the app schema), capped at 64 KiB. Conflict policy is **arrival-order-wins**
+  (an unconditional overwrite; a revision/ETag is a future add). Deleting the account
+  removes its docs.
 - `DELETE /v1/me` — Bearer → `204`. Deletes the account (Apple-mandated) and, because
   the session's account is re-checked on every request, immediately invalidates all
   of its sessions.

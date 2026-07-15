@@ -109,7 +109,7 @@ func (s *InMemoryQuotaStore) DeleteAccount(accountID string) error {
 		}
 	}
 	// Purge every row keyed by the account subject (Apple-mandated data removal):
-	// its quota balance, credit-grant history, and any pending reservations.
+	// its quota balance, credit-grant history, pending reservations, and synced docs.
 	delete(s.dev, accountID)
 	for id, g := range s.grants {
 		if g.deviceID == accountID {
@@ -120,6 +120,9 @@ func (s *InMemoryQuotaStore) DeleteAccount(accountID string) error {
 		if r.deviceID == accountID {
 			delete(s.res, id)
 		}
+	}
+	for _, kind := range []docKind{docProfile, docRoster} {
+		delete(s.docs, docKey(accountID, kind))
 	}
 	return nil
 }

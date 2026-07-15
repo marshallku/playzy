@@ -96,6 +96,7 @@ type dataStore interface {
 	QuotaStore
 	AccountStore
 	NonceStore
+	DocStore
 }
 
 // newQuotaStore builds the authoritative store from config, fail-closed: an
@@ -117,6 +118,31 @@ func newQuotaStore(cfg config) (dataStore, func() error, error) {
 	default:
 		return nil, nil, fmt.Errorf("PLAYZY_QUOTA_STORE must be 'memory' or 'sqlite' (got %q)", cfg.quotaStore)
 	}
+}
+
+// newMux registers all routes. Extracted so tests can exercise the real routing
+// (method + path) rather than calling handlers directly.
+func newMux(srv *server) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/stories", srv.handleStories)
+	mux.HandleFunc("GET /v1/catalog/situations", srv.handleCatalog)
+	mux.HandleFunc("GET /v1/quota", srv.handleQuota)
+	mux.HandleFunc("POST /v1/credits", srv.handleGrantCredits)
+	mux.HandleFunc("POST /v1/webhooks/revenuecat", srv.handleRevenueCatWebhook)
+	mux.HandleFunc("POST /v1/auth/nonce", srv.handleAuthNonce)
+	mux.HandleFunc("POST /v1/auth/apple", srv.handleAppleAuth)
+	mux.HandleFunc("POST /v1/auth/google", srv.handleGoogleAuth)
+	mux.HandleFunc("POST /v1/auth/kakao", srv.handleKakaoAuth)
+	mux.HandleFunc("GET /v1/me", srv.handleMe)
+	mux.HandleFunc("DELETE /v1/me", srv.handleDeleteMe)
+	mux.HandleFunc("GET /v1/profile", srv.handleGetProfile)
+	mux.HandleFunc("PUT /v1/profile", srv.handlePutProfile)
+	mux.HandleFunc("GET /v1/roster", srv.handleGetRoster)
+	mux.HandleFunc("PUT /v1/roster", srv.handlePutRoster)
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	})
+	return mux
 }
 
 func envOr(key, fallback string) string {
@@ -147,6 +173,7 @@ func main() {
 		quota:         store,
 		accounts:      store,
 		nonces:        store,
+		docs:          store,
 		sessionSecret: []byte(cfg.sessionSecret),
 		jwks:          newJWKSCache(&http.Client{Timeout: 10 * time.Second}),
 		apple:         appleProvider(cfg.appleClientID),
@@ -155,23 +182,7 @@ func main() {
 		now:           time.Now,
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/stories", srv.handleStories)
-	mux.HandleFunc("GET /v1/catalog/situations", srv.handleCatalog)
-	mux.HandleFunc("GET /v1/quota", srv.handleQuota)
-	mux.HandleFunc("POST /v1/credits", srv.handleGrantCredits)
-	mux.HandleFunc("POST /v1/webhooks/revenuecat", srv.handleRevenueCatWebhook)
-	mux.HandleFunc("POST /v1/auth/nonce", srv.handleAuthNonce)
-	mux.HandleFunc("POST /v1/auth/apple", srv.handleAppleAuth)
-	mux.HandleFunc("POST /v1/auth/google", srv.handleGoogleAuth)
-	mux.HandleFunc("POST /v1/auth/kakao", srv.handleKakaoAuth)
-	mux.HandleFunc("GET /v1/me", srv.handleMe)
-	mux.HandleFunc("DELETE /v1/me", srv.handleDeleteMe)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("ok"))
-	})
-
-	httpSrv := &http.Server{Addr: cfg.addr, Handler: mux}
+	httpSrv := &http.Server{Addr: cfg.addr, Handler: newMux(srv)}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -207,6 +218,7 @@ type server struct {
 	// are disabled (404) otherwise.
 	accounts      AccountStore
 	nonces        NonceStore
+	docs          DocStore
 	sessionSecret []byte
 	jwks          *jwksCache
 	apple         oidcProvider

@@ -58,6 +58,16 @@ var migrations = []string{
 		nonce      TEXT PRIMARY KEY,
 		expires_at INTEGER NOT NULL
 	);`,
+	// v3 — account-scoped opaque documents (WU6): the app's profile + roster JSON,
+	// keyed by (account, kind). FK cascade so deleting an account removes its docs
+	// (and an insert for a deleted account fails rather than resurrecting data).
+	`CREATE TABLE account_doc(
+		account_id TEXT NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+		kind       TEXT NOT NULL CHECK(kind IN ('profile','roster')),
+		doc        TEXT NOT NULL,
+		updated_at INTEGER NOT NULL,
+		PRIMARY KEY(account_id, kind)
+	);`,
 }
 
 // SQLiteQuotaStore is the durable QuotaStore (pure-Go modernc.org/sqlite, no cgo

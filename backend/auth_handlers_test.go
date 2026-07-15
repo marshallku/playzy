@@ -37,6 +37,7 @@ func newAuthServer(t *testing.T) (*server, *rsa.PrivateKey) {
 		accounts:      store,
 		nonces:        store,
 		quota:         store,
+		docs:          store,
 		sessionSecret: []byte(secret),
 		jwks:          newJWKSCache(js.srv.Client()),
 		apple:         testProvider("apple"),

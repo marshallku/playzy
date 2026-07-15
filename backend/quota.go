@@ -121,6 +121,8 @@ type InMemoryQuotaStore struct {
 	accounts   map[string]*account
 	identities map[string]string
 	nonces     map[string]time.Time
+	// Account docs (WU6): opaque profile/roster JSON keyed by accountID\x00kind.
+	docs map[string]string
 }
 
 func NewInMemoryQuotaStore() *InMemoryQuotaStore {
@@ -135,6 +137,7 @@ func newInMemoryQuotaStoreClock(now clock) *InMemoryQuotaStore {
 		grants:     map[string]memGrant{},
 		accounts:   map[string]*account{},
 		identities: map[string]string{},
+		docs:       map[string]string{},
 		nonces:     map[string]time.Time{},
 	}
 }
