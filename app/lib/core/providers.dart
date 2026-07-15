@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/auth/auth_api.dart' show UnauthorizedException;
@@ -13,6 +14,8 @@ import '../data/payment/fake_payment_gateway.dart';
 import '../data/payment/payment_gateway.dart';
 import '../data/payment/rc_client.dart';
 import '../data/profile/profile_repository.dart';
+import '../data/profile/profile_sync.dart';
+import '../data/profile/profile_sync_api.dart';
 import '../data/quota/quota_api.dart';
 import '../data/story/fake_story_api.dart';
 import '../data/story/http_story_api.dart';
@@ -45,6 +48,15 @@ final profileRepositoryProvider = Provider<ProfileRepository>(
   (ref) => PrefsProfileRepository(ref.watch(sharedPreferencesProvider)),
 );
 
+/// One shared HTTP client for all backend clients, closed on dispose. The api
+/// providers rebuild on auth changes; sharing this avoids leaking a client per
+/// rebuild (codex review).
+final httpClientProvider = Provider<http.Client>((ref) {
+  final client = http.Client();
+  ref.onDispose(client.close);
+  return client;
+});
+
 /// Local library of generated stories (planning/40). Backed by prefs; tests
 /// override with a fake.
 final storyLibraryProvider = Provider<StoryLibrary>(
@@ -59,7 +71,7 @@ final recentStoriesProvider =
 // Real backend when configured (--dart-define=PLAYZY_API_BASE_URL), else the
 // fake so the app runs with no server (ADR 0001).
 final storyApiProvider = Provider<StoryApi>((ref) => Env.hasBackend
-    ? HttpStoryApi(baseUrl: Env.apiBaseUrl, authHeaders: ref.watch(authHeadersProvider))
+    ? HttpStoryApi(baseUrl: Env.apiBaseUrl, authHeaders: ref.watch(authHeadersProvider), client: ref.watch(httpClientProvider))
     : const FakeStoryApi());
 
 /// How a purchased credit pack is settled into the authoritative balance. Derived
@@ -117,6 +129,7 @@ final quotaApiProvider = Provider<QuotaApi?>((ref) => Env.hasBackend
         baseUrl: Env.apiBaseUrl,
         authHeaders: ref.watch(authHeadersProvider),
         subject: ref.watch(authControllerProvider).accountId ?? ref.watch(deviceIdProvider),
+        client: ref.watch(httpClientProvider),
       )
     : null);
 
@@ -138,13 +151,28 @@ final situationCatalogProvider = FutureProvider<SduiDocument>((ref) async {
 bool _hasUsableChips(SduiDocument doc) =>
     doc.components.whereType<SduiChipGroup>().any((g) => g.chips.isNotEmpty);
 
+/// Account-scoped profile/roster sync (WU6) — non-null only when signed in with a
+/// backend. Reconcile-on-login lives in the AuthController; here it drives push-on-edit.
+final profileSyncProvider = Provider<ProfileSync?>((ref) {
+  final signedIn = ref.watch(authControllerProvider).session != null;
+  if (!Env.hasBackend || !signedIn) return null;
+  return ProfileSync(
+    HttpProfileSyncApi(baseUrl: Env.apiBaseUrl, authHeaders: ref.watch(authHeadersProvider), client: ref.watch(httpClientProvider)),
+    ref.watch(profileRepositoryProvider),
+  );
+});
+
 /// The child profile (null until set up). Loads on build; [save] persists.
 class ProfileController extends AsyncNotifier<ChildProfile?> {
   @override
   Future<ChildProfile?> build() => ref.watch(profileRepositoryProvider).loadProfile();
 
-  /// Persists the profile. Rethrows on failure so the caller can surface an
-  /// error and NOT treat a failed save as success.
+  /// Persists the profile. Rethrows on a LOCAL save failure so the caller can surface
+  /// an error and NOT treat a failed save as success. The backend push is best-effort
+  /// (never fails a completed local save). NOTE: a dropped push leaves the edit
+  /// local-only until the next successful edit-push; a login before that adopts the
+  /// account's older copy (account-wins) and loses the edit — a v1 limitation (a
+  /// per-doc revision + retry is a future add).
   Future<void> save(ChildProfile profile) async {
     state = const AsyncLoading();
     try {
@@ -154,6 +182,9 @@ class ProfileController extends AsyncNotifier<ChildProfile?> {
       state = AsyncError(e, st);
       rethrow;
     }
+    try {
+      await ref.read(profileSyncProvider)?.pushProfile(profile);
+    } catch (_) {}
   }
 }
 
@@ -194,6 +225,7 @@ class RosterController extends AsyncNotifier<List<StoryCharacter>> {
         final next = [...current, StoryCharacter(name: name, kind: character.kind)];
         state = AsyncData(next);
         await ref.read(profileRepositoryProvider).saveRoster(next);
+        await _push(next);
       });
 
   Future<void> remove(StoryCharacter character) => _enqueue(() async {
@@ -203,7 +235,17 @@ class RosterController extends AsyncNotifier<List<StoryCharacter>> {
             .toList();
         state = AsyncData(next);
         await ref.read(profileRepositoryProvider).saveRoster(next);
+        await _push(next);
       });
+
+  /// Best-effort backend push of the roster (never fails a completed local save). Same
+  /// v1 limitation as ProfileController.save: a dropped push can be lost to
+  /// account-wins reconciliation on a later login.
+  Future<void> _push(List<StoryCharacter> roster) async {
+    try {
+      await ref.read(profileSyncProvider)?.pushRoster(roster);
+    } catch (_) {}
+  }
 }
 
 final rosterControllerProvider =

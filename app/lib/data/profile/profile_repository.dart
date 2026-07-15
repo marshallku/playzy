@@ -19,6 +19,11 @@ abstract interface class ProfileRepository {
   Future<List<StoryCharacter>> loadRoster();
   Future<void> saveRoster(List<StoryCharacter> roster);
 
+  /// Clears the account-synced documents (profile + roster) from local storage. Used
+  /// on sign-out so a different user on this device can't inherit the previous user's
+  /// profile/roster via sync-seeding (WU6). Quota mirrors are unaffected.
+  Future<void> clearSyncedDocs();
+
   /// Free-tier counter — how many stories this device has generated. In
   /// production the authoritative count is backend-enforced (ADR 0002); this
   /// local mirror gates the UI offline.
@@ -109,6 +114,17 @@ class PrefsProfileRepository implements ProfileRepository {
   }
 
   @override
+  Future<void> clearSyncedDocs() async {
+    // remove() returns false on a write failure; treat it as fatal so a caller that
+    // relies on the clear for cross-account safety can't proceed on a silent failure.
+    final removedProfile = await _prefs.remove(_profileKey);
+    final removedRoster = await _prefs.remove(_rosterKey);
+    if (!removedProfile || !removedRoster) {
+      throw Exception('failed to clear synced profile/roster');
+    }
+  }
+
+  @override
   Future<int> generatedCount() async => _prefs.getInt(_countKey) ?? 0;
 
   @override
@@ -179,6 +195,12 @@ class FakeProfileRepository implements ProfileRepository {
 
   @override
   Future<void> saveRoster(List<StoryCharacter> roster) async => _roster = List.of(roster);
+
+  @override
+  Future<void> clearSyncedDocs() async {
+    _profile = null;
+    _roster = null;
+  }
 
   @override
   Future<int> generatedCount() async => _count;

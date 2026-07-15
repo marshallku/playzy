@@ -7,6 +7,9 @@ import 'package:playzy/data/auth/auth_session.dart';
 import 'package:playzy/data/auth/session_store.dart';
 import 'package:playzy/data/auth/social_sign_in.dart';
 import 'package:playzy/data/payment/fake_payment_gateway.dart';
+import 'package:playzy/data/profile/profile_repository.dart';
+import 'package:playzy/domain/child_profile.dart';
+import 'package:playzy/domain/story_options.dart';
 
 class FakeAuthApi implements AuthApi {
   AuthSession session = const AuthSession(token: 'tok-1', accountId: 'acct_1');
@@ -59,6 +62,7 @@ ProviderContainer _container({
   FakeSessionStore? store,
   FakePaymentGateway? gateway,
   AuthSession? initial,
+  FakeProfileRepository? profileRepo,
 }) {
   final gw = gateway ?? FakePaymentGateway();
   addTearDown(gw.dispose);
@@ -69,6 +73,7 @@ ProviderContainer _container({
     secureSessionStoreProvider.overrideWithValue(store ?? FakeSessionStore()),
     paymentGatewayProvider.overrideWithValue(gw),
     initialSessionProvider.overrideWithValue(initial),
+    profileRepositoryProvider.overrideWithValue(profileRepo ?? FakeProfileRepository()),
   ]);
   addTearDown(c.dispose);
   return c;
@@ -109,6 +114,24 @@ void main() {
       expect(store.stored, isNull);
       expect(gateway.lastUserId, 'dev-1'); // back to the device subject, NOT a fresh anon id
       expect(c.read(authHeadersProvider), {'X-Device-Id': 'dev-1'});
+    });
+
+    test('sign-out clears the synced profile/roster so a new user cannot inherit them', () async {
+      const seeded = AuthSession(token: 't', accountId: 'a');
+      final repo = FakeProfileRepository(
+        profile: ChildProfile(id: 'p1', givenName: '하준', ageBand: AgeBand.values.first),
+        roster: const [StoryCharacter(name: '뽀삐', kind: CharacterKind.animal)],
+      );
+      final c = _container(
+        store: FakeSessionStore()..stored = seeded,
+        initial: seeded,
+        profileRepo: repo,
+      );
+
+      await c.read(authControllerProvider.notifier).signOut();
+
+      expect(await repo.loadProfile(), isNull, reason: 'profile must be cleared on sign-out');
+      expect(await repo.loadRoster(), isEmpty, reason: 'roster must be cleared on sign-out');
     });
 
     test('deleteAccount calls the backend then signs out', () async {
