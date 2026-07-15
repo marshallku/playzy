@@ -22,8 +22,12 @@ codex cross-review → `~/save.sh`). Items needing the user live in
   Sign in with Apple is the anchor (Apple mandates it on iOS when other social logins
   are offered). Accounts are keyed on `(issuer, sub)`.
 - **Anonymous-first** (user decision): the 3 free stories work device-scoped before
-  login; login is prompted at purchase/save; the device subject merges into the
-  account on first login.
+  login; login is prompted at purchase. The device subject is **NOT** merged into the
+  account on login (security decision 2026-07-15): `X-Device-Id` is a client-generated
+  per-install value, not an authenticated credential, so it can't safely gate a credit
+  transfer. Credits are account-scoped from purchase (login-before-paywall); the soft
+  free tier isn't merged (robust enforcement needs device attestation — a WU7 item).
+  See `71-user-action-items.md` and `backend/README.md`.
 - **Profile sync from launch** (user decision): ChildProfile + roster sync to the
   account (WU6 in scope, not deferred); local stays the offline/anonymous cache.
 - **Subject model**: every entitlement is keyed on an opaque **subject** =

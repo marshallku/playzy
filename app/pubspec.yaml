@@ -20,6 +20,9 @@ dependencies:
   # Apple IAP via RevenueCat — consumable credit packs (ADR 0002 / D1). iOS only;
   # activated at runtime behind PLAYZY_REVENUECAT_IOS_KEY + a real backend.
   purchases_flutter: ^8.0.0
+  # Secure (Keychain-backed) storage for the app session token (WU5). Survives
+  # reinstall on iOS, unlike shared_preferences.
+  flutter_secure_storage: ^9.0.0
 
 dev_dependencies:
   flutter_test:
