@@ -60,10 +60,11 @@ func (s *server) handleAuthNonce(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"nonce": nonce})
 }
 
-// handleAppleAuth verifies a Sign in with Apple id_token bound to a server nonce,
-// upserts the account, and returns a session.
-func (s *server) handleAppleAuth(w http.ResponseWriter, r *http.Request) {
-	if !s.authEnabled() || s.cfg.appleClientID == "" {
+// oidcAuth is the shared provider login endpoint: it verifies a provider id_token
+// bound to a server nonce, upserts the account, and returns a session. Disabled (404)
+// unless auth is configured AND this provider has a client id (audience) set.
+func (s *server) oidcAuth(w http.ResponseWriter, r *http.Request, p oidcProvider, clientID string) {
+	if !s.authEnabled() || clientID == "" {
 		httpError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -76,7 +77,21 @@ func (s *server) handleAppleAuth(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, "idToken and nonce are required")
 		return
 	}
-	s.completeOIDCLogin(w, r, s.apple, body.IDToken, body.Nonce)
+	s.completeOIDCLogin(w, r, p, body.IDToken, body.Nonce)
+}
+
+// Per-provider endpoints. Each verifies that provider's id_token against its own
+// issuer/JWKS/audience; all share the account model and session issuance.
+func (s *server) handleAppleAuth(w http.ResponseWriter, r *http.Request) {
+	s.oidcAuth(w, r, s.apple, s.cfg.appleClientID)
+}
+
+func (s *server) handleGoogleAuth(w http.ResponseWriter, r *http.Request) {
+	s.oidcAuth(w, r, s.google, s.cfg.googleClientID)
+}
+
+func (s *server) handleKakaoAuth(w http.ResponseWriter, r *http.Request) {
+	s.oidcAuth(w, r, s.kakao, s.cfg.kakaoClientID)
 }
 
 // completeOIDCLogin is the shared provider login path (Apple now; Google/Kakao join

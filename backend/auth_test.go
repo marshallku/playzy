@@ -271,6 +271,38 @@ func TestJWKS_StaleKeyRetiredAfterTTL(t *testing.T) {
 	}
 }
 
+// A provider may accept more than one iss form (Google's HTTPS + legacy bare
+// domain); both verify, and the claims carry the CANONICAL issuer so one user is
+// one account. An unrelated issuer is still rejected.
+func TestVerifyIDToken_MultipleAcceptedIssuers(t *testing.T) {
+	key := testKey(t)
+	js := newJWKSServer(t, "kid-1", &key.PublicKey)
+	c := newCache()
+	p := oidcProvider{
+		name:            "google",
+		issuer:          "https://accounts.google.com",
+		acceptedIssuers: []string{"https://accounts.google.com", "accounts.google.com"},
+		jwksURL:         js.srv.URL,
+		audiences:       []string{"client-123"},
+	}
+
+	for _, iss := range []string{"https://accounts.google.com", "accounts.google.com"} {
+		raw := signIDToken(t, key, "kid-1", map[string]any{"iss": iss})
+		claims, err := c.verifyIDToken(context.Background(), p, raw, testNow)
+		if err != nil {
+			t.Fatalf("iss=%q rejected: %v", iss, err)
+		}
+		if claims.Issuer != "https://accounts.google.com" {
+			t.Fatalf("iss=%q: claims issuer = %q, want canonical", iss, claims.Issuer)
+		}
+	}
+
+	bad := signIDToken(t, key, "kid-1", map[string]any{"iss": "https://evil.example"})
+	if _, err := c.verifyIDToken(context.Background(), p, bad, testNow); err == nil {
+		t.Fatal("unrelated issuer accepted")
+	}
+}
+
 func TestSession_RoundTrip(t *testing.T) {
 	secret := []byte(strings.Repeat("s", 32))
 	tok, err := issueSession(secret, "acct-1", 3, testNow)

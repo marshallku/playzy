@@ -26,14 +26,22 @@ func newAuthServer(t *testing.T) (*server, *rsa.PrivateKey) {
 	js := newJWKSServer(t, "kid-1", &key.PublicKey)
 	store := NewInMemoryQuotaStore()
 	secret := strings.Repeat("k", 32)
+	testProvider := func(name string) oidcProvider {
+		return oidcProvider{name: name, issuer: "https://test.issuer", jwksURL: js.srv.URL, audiences: []string{"client-123"}}
+	}
 	srv := &server{
-		cfg:           config{sessionSecret: secret, appleClientID: "client-123", quotaStore: "memory"},
+		cfg: config{
+			sessionSecret: secret, quotaStore: "memory",
+			appleClientID: "client-123", googleClientID: "client-123", kakaoClientID: "client-123",
+		},
 		accounts:      store,
 		nonces:        store,
 		quota:         store,
 		sessionSecret: []byte(secret),
 		jwks:          newJWKSCache(js.srv.Client()),
-		apple:         oidcProvider{name: "apple", issuer: "https://test.issuer", jwksURL: js.srv.URL, audiences: []string{"client-123"}},
+		apple:         testProvider("apple"),
+		google:        testProvider("google"),
+		kakao:         testProvider("kakao"),
 		now:           func() time.Time { return testNow },
 	}
 	return srv, key

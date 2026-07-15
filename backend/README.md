@@ -34,8 +34,13 @@ the provider. Today it is the thinnest viable adapter: it proxies to a local
 - `POST /v1/auth/apple` — body `{idToken, nonce}` → `{token, account:{id}, isNew}`.
   Verifies a Sign in with Apple id_token (RS256 against Apple's JWKS, iss/aud/exp),
   enforces the nonce binding, upserts the account, and returns an app session JWT.
-  Disabled (404) without `PLAYZY_SESSION_SECRET` or `APPLE_CLIENT_ID`. Google/Kakao
-  join via the same path (WU3b).
+  Disabled (404) without `PLAYZY_SESSION_SECRET` or `APPLE_CLIENT_ID`.
+- `POST /v1/auth/google` · `POST /v1/auth/kakao` — same contract as `/v1/auth/apple`,
+  verifying that provider's OIDC id_token against its own issuer/JWKS/audience
+  (Google `accounts.google.com`; Kakao `kauth.kakao.com`). Each disabled (404) unless
+  its client id (`GOOGLE_CLIENT_ID` / `KAKAO_CLIENT_ID`) is set. An account is keyed on
+  `(issuer, subject)`, so the same person via different providers is distinct until
+  account linking lands.
 - `GET /v1/me` — header `Authorization: Bearer <session>` → `{id, createdAt}`.
 - `DELETE /v1/me` — Bearer → `204`. Deletes the account (Apple-mandated) and, because
   the session's account is re-checked on every request, immediately invalidates all
@@ -130,6 +135,8 @@ needed) — see `app/lib/core/env.dart`.
 | `REVENUECAT_ALLOW_SANDBOX` | — | `1` accepts `SANDBOX` purchase events (dev/testing only). Unset → production purchases only. |
 | `PLAYZY_SESSION_SECRET` | — | HS256 key for app session JWTs. Empty → auth endpoints disabled (404). Must be ≥32 bytes (fails startup otherwise). |
 | `APPLE_CLIENT_ID` | — | Sign in with Apple audience (Services ID / bundle id) the id_token must carry. Empty → `/v1/auth/apple` disabled (404). |
+| `GOOGLE_CLIENT_ID` | — | Google OIDC audience. Empty → `/v1/auth/google` disabled (404). |
+| `KAKAO_CLIENT_ID` | — | Kakao OIDC audience (REST API key / app key). Empty → `/v1/auth/kakao` disabled (404). |
 
 ## Swapping the AI provider
 

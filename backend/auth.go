@@ -37,6 +37,7 @@ const minSessionSecretLen = 32
 
 var (
 	errNoKey        = errors.New("no signing key for token kid")
+	errBadIssuer    = errors.New("token issuer not accepted")
 	errBadAudience  = errors.New("token audience not accepted")
 	errBadSubject   = errors.New("token subject missing or malformed")
 	errWeakSecret   = fmt.Errorf("PLAYZY_SESSION_SECRET must be at least %d bytes", minSessionSecretLen)
@@ -51,13 +52,17 @@ func validateSessionSecret(secret string) error {
 	return nil
 }
 
-// oidcProvider is a verifiable OIDC issuer. audiences is the set of accepted
-// `aud` values (our client ids at that provider).
+// oidcProvider is a verifiable OIDC issuer. issuer is the CANONICAL issuer used for
+// account identity keying; acceptedIssuers is the set of `iss` values a token may
+// legitimately carry (⊇ {issuer}) — some providers (Google) mint more than one form.
+// When acceptedIssuers is empty it defaults to {issuer}. audiences is the set of
+// accepted `aud` values (our client ids at that provider).
 type oidcProvider struct {
-	name      string
-	issuer    string
-	jwksURL   string
-	audiences []string
+	name            string
+	issuer          string
+	acceptedIssuers []string
+	jwksURL         string
+	audiences       []string
 }
 
 func appleProvider(clientID string) oidcProvider {
@@ -67,6 +72,42 @@ func appleProvider(clientID string) oidcProvider {
 		jwksURL:   "https://appleid.apple.com/auth/keys",
 		audiences: []string{clientID},
 	}
+}
+
+func googleProvider(clientID string) oidcProvider {
+	return oidcProvider{
+		name:   "google",
+		issuer: "https://accounts.google.com",
+		// Google issues both the HTTPS and the legacy bare-domain form; accept both
+		// but key accounts on the canonical `issuer` above so one user stays one account.
+		acceptedIssuers: []string{"https://accounts.google.com", "accounts.google.com"},
+		jwksURL:         "https://www.googleapis.com/oauth2/v3/certs",
+		audiences:       []string{clientID},
+	}
+}
+
+func kakaoProvider(clientID string) oidcProvider {
+	return oidcProvider{
+		name:      "kakao",
+		issuer:    "https://kauth.kakao.com",
+		jwksURL:   "https://kauth.kakao.com/.well-known/jwks.json",
+		audiences: []string{clientID},
+	}
+}
+
+// issuerAccepted reports whether the token's iss is valid for p. Defaults to the
+// canonical issuer when no explicit accepted set is configured.
+func (p oidcProvider) issuerAccepted(iss string) bool {
+	allowed := p.acceptedIssuers
+	if len(allowed) == 0 {
+		allowed = []string{p.issuer}
+	}
+	for _, a := range allowed {
+		if iss == a {
+			return true
+		}
+	}
+	return false
 }
 
 // idClaims are the verified fields we consume from an id_token.
@@ -249,7 +290,6 @@ func (c *jwksCache) verifyIDToken(ctx context.Context, p oidcProvider, raw strin
 	claims := jwt.MapClaims{}
 	_, err := jwt.ParseWithClaims(raw, claims, keyFunc,
 		jwt.WithValidMethods([]string{"RS256"}),
-		jwt.WithIssuer(p.issuer),
 		jwt.WithExpirationRequired(),
 		jwt.WithTimeFunc(func() time.Time { return now }),
 	)
@@ -257,6 +297,11 @@ func (c *jwksCache) verifyIDToken(ctx context.Context, p oidcProvider, raw strin
 		return nil, err
 	}
 
+	// Issuer is validated manually (a provider may accept more than one iss form);
+	// the returned claims carry the CANONICAL issuer so account keying is stable.
+	if iss, _ := claims["iss"].(string); !p.issuerAccepted(iss) {
+		return nil, errBadIssuer
+	}
 	if !audienceAccepted(claims["aud"], p.audiences) {
 		return nil, errBadAudience
 	}

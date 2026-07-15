@@ -61,6 +61,10 @@ type config struct {
 	// appleClientID is the Sign in with Apple audience (Services ID / bundle id) the
 	// id_token must carry. Empty → /v1/auth/apple is disabled (404).
 	appleClientID string
+	// googleClientID / kakaoClientID are the OIDC audiences for those providers.
+	// Empty → that provider's /v1/auth/{google,kakao} endpoint is disabled (404).
+	googleClientID string
+	kakaoClientID  string
 }
 
 func loadConfig() config {
@@ -78,8 +82,10 @@ func loadConfig() config {
 		revenueCatAppID:        os.Getenv("REVENUECAT_APP_ID"),
 		revenueCatAllowSandbox: os.Getenv("REVENUECAT_ALLOW_SANDBOX") == "1",
 
-		sessionSecret: os.Getenv("PLAYZY_SESSION_SECRET"),
-		appleClientID: os.Getenv("APPLE_CLIENT_ID"),
+		sessionSecret:  os.Getenv("PLAYZY_SESSION_SECRET"),
+		appleClientID:  os.Getenv("APPLE_CLIENT_ID"),
+		googleClientID: os.Getenv("GOOGLE_CLIENT_ID"),
+		kakaoClientID:  os.Getenv("KAKAO_CLIENT_ID"),
 	}
 }
 
@@ -144,6 +150,8 @@ func main() {
 		sessionSecret: []byte(cfg.sessionSecret),
 		jwks:          newJWKSCache(&http.Client{Timeout: 10 * time.Second}),
 		apple:         appleProvider(cfg.appleClientID),
+		google:        googleProvider(cfg.googleClientID),
+		kakao:         kakaoProvider(cfg.kakaoClientID),
 		now:           time.Now,
 	}
 
@@ -155,6 +163,8 @@ func main() {
 	mux.HandleFunc("POST /v1/webhooks/revenuecat", srv.handleRevenueCatWebhook)
 	mux.HandleFunc("POST /v1/auth/nonce", srv.handleAuthNonce)
 	mux.HandleFunc("POST /v1/auth/apple", srv.handleAppleAuth)
+	mux.HandleFunc("POST /v1/auth/google", srv.handleGoogleAuth)
+	mux.HandleFunc("POST /v1/auth/kakao", srv.handleKakaoAuth)
 	mux.HandleFunc("GET /v1/me", srv.handleMe)
 	mux.HandleFunc("DELETE /v1/me", srv.handleDeleteMe)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -200,6 +210,8 @@ type server struct {
 	sessionSecret []byte
 	jwks          *jwksCache
 	apple         oidcProvider
+	google        oidcProvider
+	kakao         oidcProvider
 	// now is the clock for session/nonce timestamps; injectable for tests.
 	now clock
 }
