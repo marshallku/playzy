@@ -55,6 +55,12 @@ type config struct {
 	// revenueCatAllowSandbox accepts SANDBOX-environment purchase events. Dev/testing
 	// only; production leaves it false so a sandbox purchase never mints real credits.
 	revenueCatAllowSandbox bool
+	// sessionSecret signs app session JWTs (HS256). Empty → the auth endpoints are
+	// disabled (404); when set it must be ≥256 bits (validated at startup).
+	sessionSecret string
+	// appleClientID is the Sign in with Apple audience (Services ID / bundle id) the
+	// id_token must carry. Empty → /v1/auth/apple is disabled (404).
+	appleClientID string
 }
 
 func loadConfig() config {
@@ -71,13 +77,25 @@ func loadConfig() config {
 		revenueCatWebhookAuth:  os.Getenv("REVENUECAT_WEBHOOK_AUTH"),
 		revenueCatAppID:        os.Getenv("REVENUECAT_APP_ID"),
 		revenueCatAllowSandbox: os.Getenv("REVENUECAT_ALLOW_SANDBOX") == "1",
+
+		sessionSecret: os.Getenv("PLAYZY_SESSION_SECRET"),
+		appleClientID: os.Getenv("APPLE_CLIENT_ID"),
 	}
+}
+
+// dataStore is the full persistence surface — quota, accounts, and login nonces.
+// Both the in-memory and SQLite backends implement all three, so one instance
+// serves everything.
+type dataStore interface {
+	QuotaStore
+	AccountStore
+	NonceStore
 }
 
 // newQuotaStore builds the authoritative store from config, fail-closed: an
 // unset/unknown selector is a fatal misconfiguration (never a silent fallback to
 // a data-losing store). Returns the store and a close func.
-func newQuotaStore(cfg config) (QuotaStore, func() error, error) {
+func newQuotaStore(cfg config) (dataStore, func() error, error) {
 	switch cfg.quotaStore {
 	case "memory":
 		return NewInMemoryQuotaStore(), func() error { return nil }, nil
@@ -109,10 +127,24 @@ func main() {
 		log.Fatalf("quota store: %v", err)
 	}
 
+	// Auth is enabled only with a configured session secret, which must be strong
+	// enough that HS256 sessions can't be forged (fail startup on a weak secret).
+	if cfg.sessionSecret != "" {
+		if err := validateSessionSecret(cfg.sessionSecret); err != nil {
+			log.Fatalf("auth config: %v", err)
+		}
+	}
+
 	srv := &server{
-		cfg:   cfg,
-		http:  &http.Client{Timeout: cfg.timeout},
-		quota: store,
+		cfg:           cfg,
+		http:          &http.Client{Timeout: cfg.timeout},
+		quota:         store,
+		accounts:      store,
+		nonces:        store,
+		sessionSecret: []byte(cfg.sessionSecret),
+		jwks:          newJWKSCache(&http.Client{Timeout: 10 * time.Second}),
+		apple:         appleProvider(cfg.appleClientID),
+		now:           time.Now,
 	}
 
 	mux := http.NewServeMux()
@@ -121,6 +153,10 @@ func main() {
 	mux.HandleFunc("GET /v1/quota", srv.handleQuota)
 	mux.HandleFunc("POST /v1/credits", srv.handleGrantCredits)
 	mux.HandleFunc("POST /v1/webhooks/revenuecat", srv.handleRevenueCatWebhook)
+	mux.HandleFunc("POST /v1/auth/nonce", srv.handleAuthNonce)
+	mux.HandleFunc("POST /v1/auth/apple", srv.handleAppleAuth)
+	mux.HandleFunc("GET /v1/me", srv.handleMe)
+	mux.HandleFunc("DELETE /v1/me", srv.handleDeleteMe)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
@@ -156,6 +192,16 @@ type server struct {
 	cfg   config
 	http  *http.Client
 	quota QuotaStore
+
+	// Auth (WU3). Set when PLAYZY_SESSION_SECRET is configured; the auth handlers
+	// are disabled (404) otherwise.
+	accounts      AccountStore
+	nonces        NonceStore
+	sessionSecret []byte
+	jwks          *jwksCache
+	apple         oidcProvider
+	// now is the clock for session/nonce timestamps; injectable for tests.
+	now clock
 }
 
 // deviceID identifies the caller for quota (ADR 0002). The app sends a stable,

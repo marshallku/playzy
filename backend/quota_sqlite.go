@@ -34,6 +34,30 @@ var migrations = []string{
 		amount     INTEGER NOT NULL CHECK(amount > 0),
 		created_at INTEGER NOT NULL
 	);`,
+	// v2 — user accounts (WU3). An account is a server-generated id; an identity
+	// is a (provider issuer, subject) pair pointing at it (a person can sign in
+	// with multiple providers, each a distinct identity until linking lands).
+	// token_version invalidates all of an account's sessions when bumped. Deleting
+	// an account cascades to its identities (FKs are enabled via the DSN pragma).
+	// auth_nonce holds server-issued single-use login nonces (OIDC anti-replay).
+	`CREATE TABLE account(
+		id            TEXT PRIMARY KEY,
+		created_at    INTEGER NOT NULL,
+		token_version INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE identity(
+		issuer     TEXT NOT NULL,
+		subject    TEXT NOT NULL,
+		email      TEXT NOT NULL DEFAULT '',
+		account_id TEXT NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+		created_at INTEGER NOT NULL,
+		PRIMARY KEY(issuer, subject)
+	);
+	CREATE INDEX identity_by_account ON identity(account_id);
+	CREATE TABLE auth_nonce(
+		nonce      TEXT PRIMARY KEY,
+		expires_at INTEGER NOT NULL
+	);`,
 }
 
 // SQLiteQuotaStore is the durable QuotaStore (pure-Go modernc.org/sqlite, no cgo

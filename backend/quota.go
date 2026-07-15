@@ -116,6 +116,11 @@ type InMemoryQuotaStore struct {
 	dev    map[string]*memDevice
 	res    map[string]memReservation
 	grants map[string]memGrant
+	// Auth (WU3): accounts keyed by id, identities keyed by issuer\x00subject →
+	// account id, and single-use login nonces → expiry.
+	accounts   map[string]*account
+	identities map[string]string
+	nonces     map[string]time.Time
 }
 
 func NewInMemoryQuotaStore() *InMemoryQuotaStore {
@@ -124,10 +129,13 @@ func NewInMemoryQuotaStore() *InMemoryQuotaStore {
 
 func newInMemoryQuotaStoreClock(now clock) *InMemoryQuotaStore {
 	return &InMemoryQuotaStore{
-		now:    now,
-		dev:    map[string]*memDevice{},
-		res:    map[string]memReservation{},
-		grants: map[string]memGrant{},
+		now:        now,
+		dev:        map[string]*memDevice{},
+		res:        map[string]memReservation{},
+		grants:     map[string]memGrant{},
+		accounts:   map[string]*account{},
+		identities: map[string]string{},
+		nonces:     map[string]time.Time{},
 	}
 }
 

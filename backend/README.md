@@ -27,7 +27,25 @@ the provider. Today it is the thinnest viable adapter: it proxies to a local
   account id after login). See ADR 0002.
 - `GET /v1/catalog/situations` — the SDUI document for the situation picker
   (ADR 0003), matching the app's bundled default.
+- `POST /v1/auth/nonce` → `{nonce}` — a single-use, short-lived login nonce. The
+  client hashes it (sha256) into the provider authorization request and returns the
+  raw value to the login endpoint (OIDC anti-replay). Disabled (404) without
+  `PLAYZY_SESSION_SECRET`.
+- `POST /v1/auth/apple` — body `{idToken, nonce}` → `{token, account:{id}, isNew}`.
+  Verifies a Sign in with Apple id_token (RS256 against Apple's JWKS, iss/aud/exp),
+  enforces the nonce binding, upserts the account, and returns an app session JWT.
+  Disabled (404) without `PLAYZY_SESSION_SECRET` or `APPLE_CLIENT_ID`. Google/Kakao
+  join via the same path (WU3b).
+- `GET /v1/me` — header `Authorization: Bearer <session>` → `{id, createdAt}`.
+- `DELETE /v1/me` — Bearer → `204`. Deletes the account (Apple-mandated) and, because
+  the session's account is re-checked on every request, immediately invalidates all
+  of its sessions.
 - `GET /healthz` — `ok`.
+
+Sessions are stateless HS256 JWTs (30d) carrying the account id + a token version;
+every authenticated request re-loads the account and checks the version, so a
+deleted/rotated account can't keep using an old token. See ADR 0002 (accounts key
+the durable quota subject once WU4 lands).
 
 ## Quota (ADR 0002)
 
@@ -100,6 +118,8 @@ needed) — see `app/lib/core/env.dart`.
 | `REVENUECAT_WEBHOOK_AUTH` | — | Shared secret RevenueCat sends in the `Authorization` header of every webhook. Empty → `POST /v1/webhooks/revenuecat` disabled (404). |
 | `REVENUECAT_APP_ID` | — | When set, only accepts webhook events for this RevenueCat app id (project isolation). |
 | `REVENUECAT_ALLOW_SANDBOX` | — | `1` accepts `SANDBOX` purchase events (dev/testing only). Unset → production purchases only. |
+| `PLAYZY_SESSION_SECRET` | — | HS256 key for app session JWTs. Empty → auth endpoints disabled (404). Must be ≥32 bytes (fails startup otherwise). |
+| `APPLE_CLIENT_ID` | — | Sign in with Apple audience (Services ID / bundle id) the id_token must carry. Empty → `/v1/auth/apple` disabled (404). |
 
 ## Swapping the AI provider
 
