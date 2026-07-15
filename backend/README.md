@@ -133,7 +133,11 @@ needed) — see `app/lib/core/env.dart`.
 | Env | Default | Meaning |
 | --- | --- | --- |
 | `PLAYZY_ADDR` | `:8080` | Listen address |
-| `KAGI_SERVE_URL` | `http://127.0.0.1:8921` | Where `kagi serve` is listening |
+| `PLAYZY_AI_PROVIDER` | `kagi` | `kagi` (dev-only, unofficial proxy) or `anthropic` (official Messages API — the launch provider). Unknown value is fatal at startup. |
+| `ANTHROPIC_API_KEY` | — | Official-provider credential. **Required and fail-closed** when `PLAYZY_AI_PROVIDER=anthropic` (startup aborts without it). Never sent to clients. |
+| `ANTHROPIC_MODEL` | `claude-opus-4-8` | Story model for the Anthropic provider. A bare string passed straight to the API, so a newer model needs no code change. |
+| `ANTHROPIC_BASE_URL` | — | Overrides the Anthropic API endpoint (tests / gateway routing). Empty → SDK default. |
+| `KAGI_SERVE_URL` | `http://127.0.0.1:8921` | Where `kagi serve` is listening (Kagi provider only) |
 | `PLAYZY_QUOTA_STORE` | **required** | `memory` (dev, volatile) or `sqlite` (durable). No default — a missing/unknown value is fatal, so a prod deploy can't silently boot on the restart-volatile store. |
 | `PLAYZY_DB_PATH` | — | SQLite file; **required** when `PLAYZY_QUOTA_STORE=sqlite`. |
 | `PLAYZY_ADMIN_TOKEN` | — | Guards the dev-stub `POST /v1/credits`. Empty → endpoint disabled. |
@@ -145,11 +149,24 @@ needed) — see `app/lib/core/env.dart`.
 | `GOOGLE_CLIENT_ID` | — | Google OIDC audience. Empty → `/v1/auth/google` disabled (404). |
 | `KAKAO_CLIENT_ID` | — | Kakao OIDC audience (REST API key / app key). Empty → `/v1/auth/kakao` disabled (404). |
 
-## Swapping the AI provider
+## AI provider
 
-kagi is a **reverse-engineered, unofficial** client and is dev-only (ADR 0001).
-To move to OpenAI/Anthropic/etc., change **only** `callAI` in `main.go` — the
-prompt builder, parser, contract, and the entire app stay untouched.
+The provider is selected by `PLAYZY_AI_PROVIDER` behind the single `callAI` seam;
+the prompt builder, parser, contract, and the entire app stay untouched by the choice.
+
+- **`kagi`** (default) — a **reverse-engineered, unofficial** client, **dev-only**
+  (ADR 0001). Never shipped.
+- **`anthropic`** — the official Anthropic Messages API (`github.com/anthropics/anthropic-sdk-go`).
+  This is the **launch** provider. Set `PLAYZY_AI_PROVIDER=anthropic` and `ANTHROPIC_API_KEY`;
+  startup fails closed if the key is missing.
+
+```bash
+# Production (official provider)
+PLAYZY_QUOTA_STORE=sqlite PLAYZY_DB_PATH=./playzy.db \
+  PLAYZY_AI_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-ant-... go run .
+```
+
+A new provider is a change confined to `callAI` / a `call<Provider>` helper in `main.go`.
 
 ## Test
 

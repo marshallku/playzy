@@ -51,10 +51,18 @@ via OIDC id_token; I need each provider's **client id (audience)** to validate t
       secrets as `PLAYZY_SESSION_SECRET`).
 
 ## 🔴 Blocking — production infrastructure
-- [ ] **Official AI provider to replace kagi.** kagi is unofficial/dev-only and
-      **cannot ship**. Pick Anthropic or OpenAI (behind the existing `callAI` seam),
-      provide an **API key**, and approve the per-story token cost. (This is the single
-      biggest non-obvious launch blocker.)
+- [x] **Official AI provider to replace kagi — CODE DONE.** The official Anthropic
+      Messages-API provider is wired behind the `callAI` seam (`PLAYZY_AI_PROVIDER=anthropic`).
+      **What's left for YOU:**
+      - [ ] Provide an **`ANTHROPIC_API_KEY`** (set it in the host's secrets). Startup
+            fails closed without it when the provider is `anthropic`, so nothing ships half-configured.
+      - [ ] **Approve the per-story token cost.** Default model is `claude-opus-4-8`
+            (override with `ANTHROPIC_MODEL`; a cheaper model like `claude-haiku-4-5` is a
+            one-env-var change if you want a lower per-story cost). A bedtime story is a few
+            short pages, so cost/story is small — but confirm before launch.
+      - [ ] **Live smoke test** — once the key is set, generate one real story end-to-end
+            (only step that couldn't be pre-verified without a key; unit tests already cover
+            request-shaping + parsing against a mock).
 - [ ] **Backend hosting decision (D5)** — pick a host (Fly / Railway / Cloud Run /
       etc.). Then I wire the existing deploy workflow + secrets.
 - [ ] **Production quota store** — sqlite-on-persistent-disk is fine for v1 single

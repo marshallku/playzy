@@ -19,12 +19,36 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
+)
+
+// aiProvider selects which upstream backs the callAI seam.
+const (
+	aiProviderKagi      = "kagi"
+	aiProviderAnthropic = "anthropic"
 )
 
 type config struct {
 	addr    string
 	kagiURL string
 	timeout time.Duration
+	// aiProvider picks the callAI backend: "kagi" (dev-only, unofficial proxy) or
+	// "anthropic" (the official Messages API — the launch provider). Default "kagi"
+	// keeps local dev unchanged; a prod deploy sets it to "anthropic". Validated at
+	// startup (validateAIConfig) — an unknown value fails closed.
+	aiProvider string
+	// anthropicAPIKey authenticates the official provider. REQUIRED and fail-closed
+	// when aiProvider is "anthropic" (validated at startup); never sent to clients.
+	anthropicAPIKey string
+	// anthropicModel pins the story model so generations stay stable across host
+	// changes. Defaults to the current Opus. A bare string is passed straight to the
+	// API (the SDK's Model type is a string alias), so a newer model needs no code change.
+	anthropicModel string
+	// anthropicBaseURL overrides the API endpoint. Empty → the SDK default. Present so
+	// tests can point the SDK at a local server and prod can route through a gateway.
+	anthropicBaseURL string
 	// adminToken guards privileged endpoints (credit grants). Empty → those
 	// endpoints are disabled entirely. In production the verified-purchase
 	// webhook presents this token; it is never known to app clients.
@@ -77,6 +101,11 @@ func loadConfig() config {
 		kagiProfileID: os.Getenv("KAGI_PROFILE_ID"),
 		quotaStore:    os.Getenv("PLAYZY_QUOTA_STORE"),
 		dbPath:        os.Getenv("PLAYZY_DB_PATH"),
+
+		aiProvider:       envOr("PLAYZY_AI_PROVIDER", aiProviderKagi),
+		anthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
+		anthropicModel:   envOr("ANTHROPIC_MODEL", "claude-opus-4-8"),
+		anthropicBaseURL: os.Getenv("ANTHROPIC_BASE_URL"),
 
 		revenueCatWebhookAuth:  os.Getenv("REVENUECAT_WEBHOOK_AUTH"),
 		revenueCatAppID:        os.Getenv("REVENUECAT_APP_ID"),
@@ -167,19 +196,26 @@ func main() {
 		}
 	}
 
+	// The AI provider is validated fail-closed: an unknown provider, or the official
+	// provider with no API key, aborts startup rather than 502-ing every generation.
+	if err := validateAIConfig(cfg); err != nil {
+		log.Fatalf("ai config: %v", err)
+	}
+
 	srv := &server{
-		cfg:           cfg,
-		http:          &http.Client{Timeout: cfg.timeout},
-		quota:         store,
-		accounts:      store,
-		nonces:        store,
-		docs:          store,
-		sessionSecret: []byte(cfg.sessionSecret),
-		jwks:          newJWKSCache(&http.Client{Timeout: 10 * time.Second}),
-		apple:         appleProvider(cfg.appleClientID),
-		google:        googleProvider(cfg.googleClientID),
-		kakao:         kakaoProvider(cfg.kakaoClientID),
-		now:           time.Now,
+		cfg:             cfg,
+		http:            &http.Client{Timeout: cfg.timeout},
+		anthropicClient: newAnthropicClient(cfg),
+		quota:           store,
+		accounts:        store,
+		nonces:          store,
+		docs:            store,
+		sessionSecret:   []byte(cfg.sessionSecret),
+		jwks:            newJWKSCache(&http.Client{Timeout: 10 * time.Second}),
+		apple:           appleProvider(cfg.appleClientID),
+		google:          googleProvider(cfg.googleClientID),
+		kakao:           kakaoProvider(cfg.kakaoClientID),
+		now:             time.Now,
 	}
 
 	httpSrv := &http.Server{Addr: cfg.addr, Handler: newMux(srv)}
@@ -210,9 +246,11 @@ func main() {
 }
 
 type server struct {
-	cfg   config
-	http  *http.Client
-	quota QuotaStore
+	cfg  config
+	http *http.Client
+	// anthropicClient backs callAnthropic; nil unless aiProvider is "anthropic".
+	anthropicClient *anthropic.Client
+	quota           QuotaStore
 
 	// Auth (WU3). Set when PLAYZY_SESSION_SECRET is configured; the auth handlers
 	// are disabled (404) otherwise.
@@ -302,12 +340,15 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// In profile mode the Kagi assistant's instructions ARE the system prompt
+	// In Kagi profile mode the Kagi assistant's instructions ARE the system prompt
 	// (created from prompts/story_author_system.md), so send only the materials.
-	// Otherwise send the self-contained prompt (system + materials) so a base
-	// model still works. Either way the .md is the single versioned source.
+	// Otherwise send the self-contained prompt (system + materials) so a base model
+	// still works. The profile trim is Kagi-specific: it MUST NOT apply to the
+	// Anthropic provider, which has no assistant carrying the system prompt — trimming
+	// there would drop the instructions and output contract (codex plan review C1).
+	// Either way the .md is the single versioned source.
 	prompt := buildStoryPrompt(req)
-	if s.cfg.kagiProfileID != "" {
+	if s.cfg.aiProvider != aiProviderAnthropic && s.cfg.kagiProfileID != "" {
 		prompt = buildStoryMaterials(req)
 	}
 	text, err := s.callAI(r.Context(), prompt)
@@ -415,9 +456,96 @@ func (s *server) handleCatalog(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, situationCatalogSDUI())
 }
 
-// callAI is the provider seam. Today it calls `kagi serve`; swap the body to
-// target OpenAI/Anthropic/etc. without touching the rest of the backend.
+// validateAIConfig fails closed on a misconfigured provider so a bad deploy aborts at
+// startup instead of 502-ing every generation. Extracted from main() so it is unit
+// testable without booting a server.
+func validateAIConfig(cfg config) error {
+	switch cfg.aiProvider {
+	case aiProviderKagi:
+		return nil
+	case aiProviderAnthropic:
+		if strings.TrimSpace(cfg.anthropicAPIKey) == "" {
+			return fmt.Errorf("PLAYZY_AI_PROVIDER=anthropic requires ANTHROPIC_API_KEY")
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown PLAYZY_AI_PROVIDER %q (want %q or %q)",
+			cfg.aiProvider, aiProviderKagi, aiProviderAnthropic)
+	}
+}
+
+// newAnthropicClient builds the official Messages-API client, or nil for any other
+// provider. A base URL override lets tests point the SDK at a local server.
+func newAnthropicClient(cfg config) *anthropic.Client {
+	if cfg.aiProvider != aiProviderAnthropic {
+		return nil
+	}
+	opts := []option.RequestOption{
+		option.WithAPIKey(cfg.anthropicAPIKey),
+		option.WithRequestTimeout(cfg.timeout),
+	}
+	if cfg.anthropicBaseURL != "" {
+		opts = append(opts, option.WithBaseURL(cfg.anthropicBaseURL))
+	}
+	c := anthropic.NewClient(opts...)
+	return &c
+}
+
+// maxStoryTokens caps the model output. A bedtime story is short (a handful of
+// maxPageRunes-bounded pages), so this leaves ample headroom without streaming.
+const maxStoryTokens = 4096
+
+// callAI is the provider seam: it shapes a single prompt into story text via the
+// configured upstream. Everything around it (prompt building, quota, parse,
+// moderation) is provider-agnostic, so a new provider is a change confined here.
 func (s *server) callAI(ctx context.Context, prompt string) (string, error) {
+	if s.cfg.aiProvider == aiProviderAnthropic {
+		return s.callAnthropic(ctx, prompt)
+	}
+	return s.callKagi(ctx, prompt)
+}
+
+// callAnthropic runs one non-streaming Messages request. The prompt is already
+// self-contained (system instructions + materials inline in base-model mode), so it
+// goes as a single user text block — mirroring the Kagi seam's single-prompt contract.
+// No thinking/effort is requested: a templated toddler story is not a reasoning task,
+// and omitting them keeps latency and cost low.
+func (s *server) callAnthropic(ctx context.Context, prompt string) (string, error) {
+	resp, err := s.anthropicClient.Messages.New(ctx, anthropic.MessageNewParams{
+		Model:     anthropic.Model(s.cfg.anthropicModel),
+		MaxTokens: maxStoryTokens,
+		Messages: []anthropic.MessageParam{
+			anthropic.NewUserMessage(anthropic.NewTextBlock(prompt)),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("anthropic messages: %w", err)
+	}
+	// A refusal must fail-safe even when it carries text: the model may decline with a
+	// prose message ("I can't help with that"), which must never be parsed and delivered
+	// to a child as a story. Reject on the stop reason regardless of content (codex
+	// review C1) — the handler then releases quota and returns 502.
+	if resp.StopReason == anthropic.StopReasonRefusal {
+		return "", fmt.Errorf("anthropic refused the request (stop_reason=%s)", resp.StopReason)
+	}
+	var b strings.Builder
+	for _, block := range resp.Content {
+		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
+			b.WriteString(t.Text)
+		}
+	}
+	// Empty content covers an all-non-text response. Returning an error keeps identical
+	// failure semantics to the Kagi path: the handler releases the hold and returns 502.
+	text := b.String()
+	if strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("anthropic returned no story text (stop_reason=%s)", resp.StopReason)
+	}
+	return text, nil
+}
+
+// callKagi calls the dev-only `kagi serve` proxy. Retained for local development;
+// production runs the Anthropic provider.
+func (s *server) callKagi(ctx context.Context, prompt string) (string, error) {
 	// Always disable internet + personalization: a story needs no web search and
 	// must not leak the account's personal context, and it keeps output
 	// deterministic. Pin the assistant explicitly rather than relying on mutable
