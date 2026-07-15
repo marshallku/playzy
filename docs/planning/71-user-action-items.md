@@ -35,11 +35,19 @@ Last updated: 2026-07-15.
       (RevenueCat requirement) in `app/ios/Podfile`.
 
 ## 🔴 Blocking — needed before auth can go live
-- [ ] **Sign in with Apple** capability enabled for the app id + a **Services key**
-      (Key ID / Team ID / private key .p8) → give me for backend token verification.
-- [ ] App **session-signing secret** (I can generate one; you store it in prod secrets).
-- [ ] (Optional, KR) **Kakao** developer app (REST API key, redirect) if we add Kakao login.
-- [ ] (Optional) **Google** OAuth client if we add Google login.
+Decision (2026-07-15): v1 supports **Apple + Kakao + Google** login. All three verify
+via OIDC id_token; I need each provider's **client id (audience)** to validate tokens.
+- [ ] **Sign in with Apple** capability enabled for the app id; give me the **Services
+      ID / client id** (audience). (Backend verifies Apple's id_token against Apple's
+      JWKS — no .p8 needed for id_token verification; the .p8 Services key is only
+      needed if we later do the auth-code→token exchange.)
+- [ ] **Google** OAuth client (iOS + optionally Web) → give me the **client id(s)**
+      (audience) the app will present. Verified against Google's JWKS.
+- [ ] **Kakao** developer app with **OpenID Connect activated** → give me the
+      **REST API key / app key** (Kakao id_token audience). Verified against
+      `https://kauth.kakao.com/.well-known/jwks.json`.
+- [ ] App **session-signing secret** (I can generate one; you store it in prod
+      secrets as `PLAYZY_SESSION_SECRET`).
 
 ## 🔴 Blocking — production infrastructure
 - [ ] **Official AI provider to replace kagi.** kagi is unofficial/dev-only and
@@ -68,12 +76,11 @@ Last updated: 2026-07-15.
 - [ ] App Store screenshots + marketing copy.
 - [ ] Font glyph subsetting to cut app size (D9) — optimization, not a blocker.
 
-## 🟢 Decisions I need from you (cheap to answer, unblocks a WU)
-- [ ] **Login providers for v1**: Apple only, or Apple + Kakao (+ Google)?
-- [ ] **Profile sync (WU6)**: is single-device (local) acceptable for v1, or do you
-      want account-synced profiles across devices at launch?
-- [ ] **Anonymous use**: keep letting users generate the 3 free stories *before*
-      login (recommended — lower funnel friction), or require login up front?
+## 🟢 Decisions — RESOLVED 2026-07-15
+- [x] **Login providers for v1**: **Apple + Kakao + Google** (all three).
+- [x] **Profile sync (WU6)**: **account-synced from launch** (WU6 in scope).
+- [x] **Anonymous use**: **anonymous-first** — 3 free stories before login; device
+      quota merges into the account on first login.
 
 ---
 

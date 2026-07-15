@@ -16,10 +16,16 @@ codex cross-review → `~/save.sh`). Items needing the user live in
   Apple's official App Store Server Library has **no Go** version). Credit packs are
   **consumables** granted server-side via the `NON_RENEWING_PURCHASE` webhook,
   idempotent on `transaction_id` — the documented standard pattern.
-- **Primary auth = Sign in with Apple** (Apple mandates it on iOS when any social
-  login is offered; the identity token is a JWS verifiable in Go against Apple's
-  JWKS). Kakao / Google added behind the same account seam as fast-follows (Kakao is
-  the common KR default).
+- **Auth = Apple + Kakao + Google** (user decision 2026-07-15). All three expose an
+  **OIDC id_token**, so one generic verifier (per-issuer JWKS fetch+cache, RS256
+  verify, iss/aud/exp/nonce) handles all of them; only the provider config differs.
+  Sign in with Apple is the anchor (Apple mandates it on iOS when other social logins
+  are offered). Accounts are keyed on `(issuer, sub)`.
+- **Anonymous-first** (user decision): the 3 free stories work device-scoped before
+  login; login is prompted at purchase/save; the device subject merges into the
+  account on first login.
+- **Profile sync from launch** (user decision): ChildProfile + roster sync to the
+  account (WU6 in scope, not deferred); local stays the offline/anonymous cache.
 - **Subject model**: every entitlement is keyed on an opaque **subject** =
   `deviceId` while anonymous, `accountId` after login. RevenueCat `appUserID` is set
   to that same subject, so a purchase always credits the right holder and the webhook
