@@ -63,12 +63,16 @@ type config struct {
 	// send the base model. Account-specific, so it has no committed default; set
 	// KAGI_PROFILE_ID to enable.
 	kagiProfileID string
-	// quotaStore selects the authoritative quota backend: "memory" (dev) or
-	// "sqlite" (durable). REQUIRED and fail-closed — there is no default, so a
-	// prod deploy that omits it can't silently boot on the restart-volatile store.
+	// quotaStore selects the authoritative quota backend: "memory" (dev), "sqlite"
+	// (durable single-instance), or "postgres" (durable, horizontal scale — the k3s
+	// prod store). REQUIRED and fail-closed — there is no default, so a prod deploy
+	// that omits it can't silently boot on the restart-volatile store.
 	quotaStore string
 	// dbPath is the SQLite file; required when quotaStore is "sqlite".
 	dbPath string
+	// databaseURL is the Postgres connection URL; required when quotaStore is
+	// "postgres" (e.g. postgres://user:pass@host:5432/db?sslmode=disable).
+	databaseURL string
 	// revenueCatWebhookAuth is the shared secret RevenueCat is configured to send in
 	// the Authorization header of every webhook. Empty → the webhook endpoint is
 	// disabled (404), mirroring adminToken's fail-closed posture.
@@ -101,6 +105,7 @@ func loadConfig() config {
 		kagiProfileID: os.Getenv("KAGI_PROFILE_ID"),
 		quotaStore:    os.Getenv("PLAYZY_QUOTA_STORE"),
 		dbPath:        os.Getenv("PLAYZY_DB_PATH"),
+		databaseURL:   os.Getenv("PLAYZY_DATABASE_URL"),
 
 		aiProvider:       envOr("PLAYZY_AI_PROVIDER", aiProviderKagi),
 		anthropicAPIKey:  os.Getenv("ANTHROPIC_API_KEY"),
@@ -144,8 +149,17 @@ func newQuotaStore(cfg config) (dataStore, func() error, error) {
 			return nil, nil, err
 		}
 		return st, st.Close, nil
+	case "postgres":
+		if cfg.databaseURL == "" {
+			return nil, nil, errors.New("PLAYZY_QUOTA_STORE=postgres requires PLAYZY_DATABASE_URL")
+		}
+		st, err := OpenPostgresQuotaStore(cfg.databaseURL)
+		if err != nil {
+			return nil, nil, err
+		}
+		return st, st.Close, nil
 	default:
-		return nil, nil, fmt.Errorf("PLAYZY_QUOTA_STORE must be 'memory' or 'sqlite' (got %q)", cfg.quotaStore)
+		return nil, nil, fmt.Errorf("PLAYZY_QUOTA_STORE must be 'memory', 'sqlite', or 'postgres' (got %q)", cfg.quotaStore)
 	}
 }
 

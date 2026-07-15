@@ -18,6 +18,21 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # A throwaway Postgres so the durable prod store (PLAYZY_QUOTA_STORE=postgres) is
+    # actually exercised in CI — otherwise its tests skip and it never runs pre-merge.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: playzy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -34,4 +49,6 @@ jobs:
         run: go build -o /tmp/playzy-backend .
 
       - name: Test
-        run: go test ./...
+        env:
+          PLAYZY_TEST_DATABASE_URL: postgres://postgres:test@localhost:5432/playzy?sslmode=disable
+        run: go test ./... -race

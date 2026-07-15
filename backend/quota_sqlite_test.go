@@ -47,6 +47,12 @@ func bothStores(t *testing.T, fn func(t *testing.T, s QuotaStore, fc *fakeClock)
 		t.Cleanup(func() { _ = s.Close() })
 		fn(t, s, fc)
 	})
+	// The durable prod store (k3s) — only when a test Postgres is configured
+	// (PLAYZY_TEST_DATABASE_URL); skipped otherwise so the suite stays green without one.
+	t.Run("postgres", func(t *testing.T) {
+		fc := &fakeClock{t: base}
+		fn(t, openPostgresTestStore(t, fc.now), fc)
+	})
 }
 
 func TestQuotaStore_FreeThenCreditsThenExceeded(t *testing.T) {

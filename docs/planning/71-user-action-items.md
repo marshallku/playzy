@@ -89,6 +89,18 @@ via OIDC id_token; I need each provider's **client id (audience)** to validate t
       May need legal review.
 
 ## 🔵 Hardening (WU7 / fast-follow) — not blocking v1
+- [ ] **Account-deletion recreation window (deletion-integrity).** After `DELETE /v1/me`,
+      a request that started *entirely before* deletion completed can recreate a
+      subject-keyed quota/credit row (quota is keyed by opaque subject with no FK to
+      account, since anonymous device subjects have none — so no store can refuse it; all
+      three stores — memory/sqlite/postgres — share this). The authed generate path is
+      narrowed by `requireAccount` revalidating every request (deleted account → 401), but
+      the **admin/RevenueCat webhook `AddCredits` path has no account-existence check**, so
+      a purchase settling for a just-deleted account can mint a ghost credit. **Fix (one
+      place, all stores):** add an account-existence guard in the credit-grant handler for
+      account-scoped subjects (or a `deleted_account` tombstone). Small, code-only; decide
+      whether to fold into launch or fast-follow. Surfaced by codex during the Postgres
+      store review; deliberately kept out of the store-port unit to avoid divergence.
 - [ ] **Device attestation (App Attest / DeviceCheck on iOS, Play Integrity on
       Android).** The iOS-correct way to prove a request comes from a genuine,
       unmodified app instance on a real device (mTLS is the wrong tool — an embedded

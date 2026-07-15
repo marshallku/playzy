@@ -138,8 +138,9 @@ needed) — see `app/lib/core/env.dart`.
 | `ANTHROPIC_MODEL` | `claude-opus-4-8` | Story model for the Anthropic provider. A bare string passed straight to the API, so a newer model needs no code change. |
 | `ANTHROPIC_BASE_URL` | — | Overrides the Anthropic API endpoint (tests / gateway routing). Empty → SDK default. |
 | `KAGI_SERVE_URL` | `http://127.0.0.1:8921` | Where `kagi serve` is listening (Kagi provider only) |
-| `PLAYZY_QUOTA_STORE` | **required** | `memory` (dev, volatile) or `sqlite` (durable). No default — a missing/unknown value is fatal, so a prod deploy can't silently boot on the restart-volatile store. |
+| `PLAYZY_QUOTA_STORE` | **required** | `memory` (dev, volatile), `sqlite` (durable single-instance), or `postgres` (durable, horizontal scale — the k3s prod store). No default — a missing/unknown value is fatal, so a prod deploy can't silently boot on the restart-volatile store. |
 | `PLAYZY_DB_PATH` | — | SQLite file; **required** when `PLAYZY_QUOTA_STORE=sqlite`. |
+| `PLAYZY_DATABASE_URL` | — | Postgres URL (e.g. `postgres://user:pass@host:5432/db?sslmode=disable`); **required** when `PLAYZY_QUOTA_STORE=postgres`. Migrations run at startup under a cluster-wide advisory lock, so multiple replicas are safe. |
 | `PLAYZY_ADMIN_TOKEN` | — | Guards the dev-stub `POST /v1/credits`. Empty → endpoint disabled. |
 | `REVENUECAT_WEBHOOK_AUTH` | — | Shared secret RevenueCat sends in the `Authorization` header of every webhook. Empty → `POST /v1/webhooks/revenuecat` disabled (404). |
 | `REVENUECAT_APP_ID` | — | When set, only accepts webhook events for this RevenueCat app id (project isolation). |
