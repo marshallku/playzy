@@ -24,6 +24,11 @@ type account struct {
 
 var errAccountNotFound = errors.New("account not found")
 
+// accountIDPrefix namespaces server-generated account ids. Anonymous device subjects
+// (client-controlled X-Device-Id) are rejected if they use it, so a caller can't
+// present an account-shaped subject to reach an account's quota.
+const accountIDPrefix = "acct_"
+
 // AccountStore maps external OIDC identities to Playzy accounts.
 type AccountStore interface {
 	// UpsertIdentity returns the account for (issuer, subject), creating one on first
@@ -72,7 +77,7 @@ func (s *InMemoryQuotaStore) UpsertIdentity(issuer, subject, email string, now t
 	if id, ok := s.identities[key]; ok {
 		return id, false, nil
 	}
-	id, err := newAuthID("acct_", 16)
+	id, err := newAuthID(accountIDPrefix, 16)
 	if err != nil {
 		return "", false, err
 	}
@@ -94,10 +99,26 @@ func (s *InMemoryQuotaStore) GetAccount(accountID string) (account, error) {
 func (s *InMemoryQuotaStore) DeleteAccount(accountID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.accounts[accountID]; !ok {
+		return errAccountNotFound
+	}
 	delete(s.accounts, accountID)
 	for k, id := range s.identities {
 		if id == accountID {
 			delete(s.identities, k)
+		}
+	}
+	// Purge every row keyed by the account subject (Apple-mandated data removal):
+	// its quota balance, credit-grant history, and any pending reservations.
+	delete(s.dev, accountID)
+	for id, g := range s.grants {
+		if g.deviceID == accountID {
+			delete(s.grants, id)
+		}
+	}
+	for id, r := range s.res {
+		if r.deviceID == accountID {
+			delete(s.res, id)
 		}
 	}
 	return nil
@@ -156,7 +177,7 @@ func (s *SQLiteQuotaStore) UpsertIdentity(issuer, subject, email string, now tim
 		return "", false, err
 	}
 
-	accountID, err = newAuthID("acct_", 16)
+	accountID, err = newAuthID(accountIDPrefix, 16)
 	if err != nil {
 		return "", false, err
 	}
@@ -191,15 +212,31 @@ func (s *SQLiteQuotaStore) GetAccount(accountID string) (account, error) {
 }
 
 func (s *SQLiteQuotaStore) DeleteAccount(accountID string) error {
-	// One statement; identity rows cascade (FK ON DELETE CASCADE + foreign_keys=on).
-	res, err := s.db.Exec(`DELETE FROM account WHERE id = ?`, accountID)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.Exec(`DELETE FROM account WHERE id = ?`, accountID)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return errAccountNotFound
 	}
-	return nil
+	// identity rows cascade (FK ON DELETE CASCADE). Purge every other table keyed by
+	// the account subject so no entitlement or purchase history survives deletion.
+	for _, q := range []string{
+		`DELETE FROM quota WHERE device_id = ?`,
+		`DELETE FROM credit_grant WHERE device_id = ?`,
+		`DELETE FROM reservation WHERE device_id = ?`,
+	} {
+		if _, err := tx.Exec(q, accountID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *SQLiteQuotaStore) IssueNonce(now time.Time) (string, error) {

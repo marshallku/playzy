@@ -247,7 +247,7 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	deviceID, ok := requestDeviceID(w, r)
+	subject, ok := s.resolveSubject(w, r)
 	if !ok {
 		return
 	}
@@ -266,7 +266,7 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 	// commit only once the story is delivered, release on failure. A failed or
 	// abandoned generation is never charged, and it can't be bypassed
 	// client-side. Persistence + crash-safety live in the store (quota_sqlite.go).
-	resID, err := s.quota.Reserve(deviceID)
+	resID, err := s.quota.Reserve(subject)
 	if errors.Is(err, errQuotaExceeded) {
 		httpError(w, http.StatusPaymentRequired, "free stories used up — purchase credits to continue")
 		return
@@ -319,11 +319,11 @@ func (s *server) handleStories(w http.ResponseWriter, r *http.Request) {
 
 // GET /v1/quota — the app reads authoritative remaining allowance.
 func (s *server) handleQuota(w http.ResponseWriter, r *http.Request) {
-	deviceID, ok := requestDeviceID(w, r)
+	subject, ok := s.resolveSubject(w, r)
 	if !ok {
 		return
 	}
-	st, err := s.quota.State(deviceID)
+	st, err := s.quota.State(subject)
 	if err != nil {
 		log.Printf("quota state: %v", err)
 		httpError(w, http.StatusInternalServerError, "quota check failed")

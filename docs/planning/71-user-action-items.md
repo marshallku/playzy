@@ -69,7 +69,16 @@ via OIDC id_token; I need each provider's **client id (audience)** to validate t
       toddlers, parents are the account holders; no data from children directly.
       May need legal review.
 
-## 🟡 Needed for a polished launch (designer / content)
+## 🔵 Hardening (WU7 / fast-follow) — not blocking v1
+- [ ] **Device attestation (App Attest / DeviceCheck on iOS, Play Integrity on
+      Android).** The iOS-correct way to prove a request comes from a genuine,
+      unmodified app instance on a real device (mTLS is the wrong tool — an embedded
+      client cert is extractable). Binds `X-Device-Id` to a Secure Enclave key so it
+      can't be spoofed. Real value at launch scale = **preventing free-tier / LLM-cost
+      abuse** (bots farming free stories with random device ids), and it would also
+      unblock a safe anonymous-purchase→account credit claim. Cost: no simulator
+      support, server-side attestation verification in Go (no official SDK), dev
+      bypass needed. Decide priority: fold into WU7, or a post-launch fast-follow.
 - [ ] App icon + mascot/brand character (D3/D4 — needs an illustrator).
 - [ ] Brand hue finalization (D4, currently periwinkle #5265C6 provisional).
 - [ ] Onboarding hero art / illustration style bible.
@@ -79,8 +88,21 @@ via OIDC id_token; I need each provider's **client id (audience)** to validate t
 ## 🟢 Decisions — RESOLVED 2026-07-15
 - [x] **Login providers for v1**: **Apple + Kakao + Google** (all three).
 - [x] **Profile sync (WU6)**: **account-synced from launch** (WU6 in scope).
-- [x] **Anonymous use**: **anonymous-first** — 3 free stories before login; device
-      quota merges into the account on first login.
+- [x] **Anonymous use**: **anonymous-first** — 3 free stories before login.
+- [x] **Anonymous quota merge & device authenticity** (security decision): the app's
+      `X-Device-Id` is a client-generated per-install value (stored in
+      shared_preferences → lost on reinstall) and is NOT an authenticated credential,
+      so it can't safely gate a credit transfer. Decision: **login-before-purchase** —
+      the paywall requires sign-in (WU5), so purchased credits are account-scoped from
+      the moment of purchase (RevenueCat `logIn(accountId)`); there are no anonymous
+      credits to steal or strand. The anonymous **free tier is NOT merged** on login —
+      a logged-in user simply gets the account's own allowance. Robust free-tier
+      enforcement needs device attestation (the tier is already soft: reinstall = a
+      new device id), so no fragile merge machinery is built; attestation is a WU7
+      hardening item. Account subjects (`acct_…`) and device subjects are namespace-
+      separated so a client can't present an account-shaped device id. An
+      anonymous-purchase→login "claim" flow (needing device-ownership proof) is
+      **deferred**. → See WU7 hardening below.
 
 ---
 

@@ -42,6 +42,16 @@ the provider. Today it is the thinnest viable adapter: it proxies to a local
   of its sessions.
 - `GET /healthz` — `ok`.
 
+**Subject scoping.** `POST /v1/stories` and `GET /v1/quota` resolve their quota
+**subject** from the request: a valid `Authorization: Bearer <session>` scopes to the
+**account** (`acct_…`); otherwise the anonymous `X-Device-Id` is used (and may not
+use the reserved `acct_` prefix). A present-but-invalid Bearer is a 401 (no silent
+fallback to device scope). Purchased credits are account-scoped from purchase time
+(the app signs in before the paywall, so RevenueCat `appUserID` = the account); the
+v1 free tier is device-scoped and NOT merged into the account on login (robust free-
+tier enforcement needs device attestation — a WU7 hardening item). `DELETE /v1/me`
+purges every row keyed by the account subject (quota, credit grants, reservations).
+
 Sessions are stateless HS256 JWTs (30d) carrying the account id + a token version;
 every authenticated request re-loads the account and checks the version, so a
 deleted/rotated account can't keep using an old token. See ADR 0002 (accounts key

@@ -16,6 +16,33 @@ import (
 
 func (s *server) authEnabled() bool { return len(s.sessionSecret) > 0 }
 
+// resolveSubject returns the quota/entitlement subject for a request: the account id
+// when the caller presents a valid Bearer session, else the anonymous X-Device-Id.
+// A device id may not use the reserved account prefix, so an anonymous caller can't
+// present an account-shaped subject to reach an account's quota. Invalid Bearer → 401
+// (a broken session must not silently fall back to device scope).
+func (s *server) resolveSubject(w http.ResponseWriter, r *http.Request) (string, bool) {
+	// Any Authorization header at all is an auth ATTEMPT: it must be a valid Bearer
+	// session (requireAccount 401s otherwise) — a malformed one must never silently
+	// fall back to device scope. Only a wholly absent header is anonymous.
+	if s.authEnabled() && r.Header.Get("Authorization") != "" {
+		acct, ok := s.requireAccount(w, r)
+		if !ok {
+			return "", false
+		}
+		return acct.ID, true
+	}
+	deviceID, ok := requestDeviceID(w, r)
+	if !ok {
+		return "", false
+	}
+	if strings.HasPrefix(deviceID, accountIDPrefix) {
+		httpError(w, http.StatusBadRequest, deviceHeader+" must not use the reserved account prefix")
+		return "", false
+	}
+	return deviceID, true
+}
+
 // handleAuthNonce issues a single-use, short-lived login nonce. The client hashes
 // it (sha256) into the provider authorization request and returns the raw value to
 // the login endpoint, binding the resulting id_token to this attempt (anti-replay).
