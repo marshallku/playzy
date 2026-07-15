@@ -28,11 +28,12 @@ Last updated: 2026-07-15.
       missing capability).
 - [ ] **Sandbox tester** account (App Store Connect → Users) to exercise a real
       purchase before TestFlight.
-- [ ] **Install CocoaPods on the build machine** (`brew install cocoapods`). It is
-      currently NOT installed, so `purchases_flutter` (a CocoaPods-only plugin) is
-      not natively linked — the app still builds/runs in fake mode, but the real
-      RevenueCat path needs `pod install` to work. iOS min target is set to 13.0
-      (RevenueCat requirement) in `app/ios/Podfile`.
+- [ ] **Install CocoaPods on the build machine** (`brew install cocoapods`) — now
+      REQUIRED to run the app on the iOS sim at all. Two CocoaPods-only plugins
+      (`purchases_flutter`, `flutter_secure_storage`) are present, so without
+      `pod install` `flutter run`/launch fails ("CocoaPods not installed"). The Dart
+      code compiles clean and the full unit suite passes; only the native
+      link/on-device run is blocked. iOS min target is 13.0 in `app/ios/Podfile`.
 
 ## 🔴 Blocking — needed before auth can go live
 Decision (2026-07-15): v1 supports **Apple + Kakao + Google** login. All three verify

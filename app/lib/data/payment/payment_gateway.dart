@@ -39,6 +39,13 @@ class PurchaseResult {
 abstract interface class PaymentGateway {
   Future<List<Product>> getProducts(List<String> ids);
 
+  /// Aligns the payment provider's user identity with the backend quota subject:
+  /// the account id when signed in, the device id when anonymous. A purchase must
+  /// always attribute to the SAME subject the backend keys credits on, so this is
+  /// called on every auth transition (sign in/out). Never a provider "log out"
+  /// (that would mint a fresh anonymous id and strand device-scoped credits).
+  Future<void> setUserId(String subject);
+
   /// One-shot purchase of a [PurchaseType.consumable] credit pack. Yields a
   /// transaction the **backend** redeems into the account's credit balance
   /// (ADR 0002 — the balance is backend-owned, so buying twice accumulates).

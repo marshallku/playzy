@@ -18,7 +18,7 @@ void main() {
     test('posts the request and parses the story on 200', () async {
       late http.Request captured;
       final api = HttpStoryApi(
-        deviceId: 'test-device',
+        authHeaders: const {'X-Device-Id': 'test-device'},
         baseUrl: 'https://api.test',
         client: MockClient((req) async {
           captured = req;
@@ -49,7 +49,7 @@ void main() {
     test('normalizes a trailing slash in the base URL (no //)', () async {
       late Uri url;
       final api = HttpStoryApi(
-        deviceId: 'test-device',
+        authHeaders: const {'X-Device-Id': 'test-device'},
         baseUrl: 'https://api.test/',
         client: MockClient((req) async {
           url = req.url;
@@ -65,7 +65,7 @@ void main() {
 
     test('throws StoryApiException on a non-200 status', () async {
       final api = HttpStoryApi(
-        deviceId: 'test-device',
+        authHeaders: const {'X-Device-Id': 'test-device'},
         baseUrl: 'https://api.test',
         client: MockClient((_) async => http.Response('boom', 500)),
       );
@@ -74,7 +74,7 @@ void main() {
 
     test('maps HTTP 402 to StoryQuotaException (paywall)', () async {
       final api = HttpStoryApi(
-        deviceId: 'test-device',
+        authHeaders: const {'X-Device-Id': 'test-device'},
         baseUrl: 'https://api.test',
         client: MockClient((_) async => http.Response('quota', 402)),
       );
@@ -83,7 +83,7 @@ void main() {
 
     test('throws StoryApiException on malformed JSON', () async {
       final api = HttpStoryApi(
-        deviceId: 'test-device',
+        authHeaders: const {'X-Device-Id': 'test-device'},
         baseUrl: 'https://api.test',
         client: MockClient((_) async => http.Response('not json', 200)),
       );
@@ -92,7 +92,7 @@ void main() {
 
     test('wraps transport errors as StoryApiException', () async {
       final api = HttpStoryApi(
-        deviceId: 'test-device',
+        authHeaders: const {'X-Device-Id': 'test-device'},
         baseUrl: 'https://api.test',
         client: MockClient((_) async => throw Exception('offline')),
       );

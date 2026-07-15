@@ -33,6 +33,11 @@ abstract interface class AuthApi {
     required String nonce,
   });
 
+  /// Validates a stored session (GET /v1/me). Throws [UnauthorizedException] when the
+  /// token is rejected (401) and [AuthException] on transport/server errors — so a
+  /// caller can discard the session ONLY on a real rejection, not a transient failure.
+  Future<void> fetchMe(String token);
+
   /// Permanently deletes the account behind [token] (DELETE /v1/me).
   Future<void> deleteAccount(String token);
 }
@@ -74,6 +79,14 @@ class HttpAuthApi implements AuthApi {
       throw const AuthException('malformed sign-in response');
     }
     return AuthSession(token: token, accountId: accountId);
+  }
+
+  @override
+  Future<void> fetchMe(String token) async {
+    await _send(() => _client.get(
+          Uri.parse('$baseUrl/v1/me'),
+          headers: {'Authorization': 'Bearer $token'},
+        ));
   }
 
   @override

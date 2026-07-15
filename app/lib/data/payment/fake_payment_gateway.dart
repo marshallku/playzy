@@ -39,6 +39,14 @@ class FakePaymentGateway implements PaymentGateway {
     ),
   };
 
+  /// The last subject set via [setUserId] — lets tests assert identity alignment.
+  String? lastUserId;
+
+  @override
+  Future<void> setUserId(String subject) async {
+    lastUserId = subject;
+  }
+
   @override
   Future<List<Product>> getProducts(List<String> ids) async =>
       ids.map((id) => _catalog[id]).whereType<Product>().toList();

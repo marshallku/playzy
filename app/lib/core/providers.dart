@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/auth/auth_api.dart' show UnauthorizedException;
 import '../data/catalog/catalog_api.dart';
 import '../data/catalog/http_catalog_api.dart';
 import '../data/library/story_library.dart';
@@ -21,6 +22,7 @@ import '../domain/quota_state.dart';
 import '../domain/story.dart';
 import '../domain/story_options.dart';
 import '../sdui/sdui_models.dart';
+import 'auth_controller.dart';
 import 'constants.dart';
 import 'env.dart';
 
@@ -57,7 +59,7 @@ final recentStoriesProvider =
 // Real backend when configured (--dart-define=PLAYZY_API_BASE_URL), else the
 // fake so the app runs with no server (ADR 0001).
 final storyApiProvider = Provider<StoryApi>((ref) => Env.hasBackend
-    ? HttpStoryApi(baseUrl: Env.apiBaseUrl, deviceId: ref.watch(deviceIdProvider))
+    ? HttpStoryApi(baseUrl: Env.apiBaseUrl, authHeaders: ref.watch(authHeadersProvider))
     : const FakeStoryApi());
 
 /// How a purchased credit pack is settled into the authoritative balance. Derived
@@ -94,7 +96,10 @@ final paymentGatewayProvider = Provider<PaymentGateway>((ref) {
     return ApplePaymentGateway(
       rc,
       apiKey: Env.revenueCatIosKey,
-      appUserId: ref.watch(deviceIdProvider),
+      // The initial subject: the account when a session was hydrated at startup, else
+      // the device. Read once — auth transitions call gateway.setUserId, so the
+      // gateway instance is stable (never reconfigured).
+      appUserId: ref.read(authControllerProvider).accountId ?? ref.watch(deviceIdProvider),
     );
   }
   final gateway = FakePaymentGateway();
@@ -108,7 +113,11 @@ final catalogApiProvider = Provider<CatalogApi>((ref) =>
 /// Backend quota client — non-null only in backend mode. When null, quota is
 /// built from local mirrors (ADR 0002).
 final quotaApiProvider = Provider<QuotaApi?>((ref) => Env.hasBackend
-    ? HttpQuotaApi(baseUrl: Env.apiBaseUrl, deviceId: ref.watch(deviceIdProvider))
+    ? HttpQuotaApi(
+        baseUrl: Env.apiBaseUrl,
+        authHeaders: ref.watch(authHeadersProvider),
+        subject: ref.watch(authControllerProvider).accountId ?? ref.watch(deviceIdProvider),
+      )
     : null);
 
 /// The situation-picker SDUI document. Falls back to the bundled default if the
@@ -323,8 +332,19 @@ class StoryController extends AsyncNotifier<Story?> {
   /// EVERY attempt — success or failure — so gating/home never show stale
   /// allowance after a 402.
   Future<Story> _generateViaBackend(StoryRequest request) async {
+    // Snapshot the token this request uses BEFORE awaiting, so a concurrent sign-in
+    // that replaces the session mid-flight can't cause a stale 401 to sign out the
+    // NEW session (onUnauthorized is token-scoped against this snapshot).
+    final requestToken = ref.read(authControllerProvider).token;
     try {
       return await ref.read(storyApiProvider).generateStory(request);
+    } on UnauthorizedException {
+      // The session died mid-use — sign out (only if this request's token is still
+      // current) so the app falls back to anonymous, then surface the failure.
+      if (requestToken != null) {
+        await ref.read(authControllerProvider.notifier).onUnauthorized(requestToken);
+      }
+      rethrow;
     } finally {
       ref.invalidate(quotaStateProvider);
     }

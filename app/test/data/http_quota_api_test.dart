@@ -11,7 +11,7 @@ void main() {
       late http.Request captured;
       final api = HttpQuotaApi(
         baseUrl: 'https://api.test/',
-        deviceId: 'dev1',
+        authHeaders: const {'X-Device-Id': 'dev1'}, subject: 'dev1',
         client: MockClient((req) async {
           captured = req;
           return http.Response(
@@ -32,7 +32,7 @@ void main() {
     test('throws on a non-200 quota response', () async {
       final api = HttpQuotaApi(
         baseUrl: 'https://api.test',
-        deviceId: 'dev1',
+        authHeaders: const {'X-Device-Id': 'dev1'}, subject: 'dev1',
         client: MockClient((_) async => http.Response('down', 503)),
       );
       expect(api.fetchQuota(), throwsA(isA<Exception>()));
@@ -42,7 +42,7 @@ void main() {
       late http.Request captured;
       final api = HttpQuotaApi(
         baseUrl: 'https://api.test',
-        deviceId: 'dev1',
+        authHeaders: const {'X-Device-Id': 'dev1'}, subject: 'dev1',
         client: MockClient((req) async {
           captured = req;
           return http.Response(

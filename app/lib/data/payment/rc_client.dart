@@ -11,6 +11,10 @@ abstract interface class RcClient {
   /// (`Purchases.configure` is async).
   Future<void> configure(String apiKey, String appUserId);
 
+  /// Switches the RevenueCat app user id (to the account id on sign-in, back to the
+  /// device id on sign-out) so purchases attribute to the current backend subject.
+  Future<void> logIn(String appUserId);
+
   /// Fetch consumable products by id.
   Future<List<RcProduct>> products(List<String> ids);
 
@@ -112,6 +116,12 @@ class RevenueCatClient implements RcClient {
       }
       rethrow;
     }
+  }
+
+  @override
+  Future<void> logIn(String appUserId) async {
+    await _ready;
+    await Purchases.logIn(appUserId);
   }
 
   @override

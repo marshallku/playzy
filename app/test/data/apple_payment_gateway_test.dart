@@ -27,6 +27,13 @@ class FakeRcClient implements RcClient {
     configureCalls++;
   }
 
+  String? loggedInUserId;
+
+  @override
+  Future<void> logIn(String appUserId) async {
+    loggedInUserId = appUserId;
+  }
+
   @override
   Future<List<RcProduct>> products(List<String> ids) async =>
       ids.map((id) => catalog[id]).whereType<RcProduct>().toList();
@@ -88,6 +95,13 @@ void main() {
       await gw.getProducts(['credits_10']);
       await gw.purchase((await gw.getProducts(['credits_10'])).single);
       expect(rc.configureCalls, 1);
+    });
+
+    test('setUserId switches the RevenueCat app user id to the subject', () async {
+      final rc = FakeRcClient();
+      final gw = _gateway(rc);
+      await gw.setUserId('acct_9');
+      expect(rc.loggedInUserId, 'acct_9');
     });
 
     test('user cancel is a non-error unsuccessful result', () async {

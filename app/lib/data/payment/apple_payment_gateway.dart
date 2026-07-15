@@ -37,6 +37,12 @@ class ApplePaymentGateway implements PaymentGateway {
   }
 
   @override
+  Future<void> setUserId(String subject) async {
+    await _ensureConfigured();
+    await _rc.logIn(subject);
+  }
+
+  @override
   Future<PurchaseResult> purchase(Product product) async {
     if (product.type != PurchaseType.consumable) {
       throw ArgumentError(
