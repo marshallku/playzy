@@ -10,26 +10,31 @@ Topology chosen: **db01 shared Postgres** (the maji/irang pattern), prepare-for-
 
 ---
 
-## 1. Provision the database on db01
+## 1. Provision the database on db01 — ✅ DONE (2026-07-19)
 
-On the db01 Postgres (same instance maji/irang use), create a dedicated database + role:
-
-```sql
-CREATE ROLE playzy WITH LOGIN PASSWORD '<pick-a-strong-password>';
-CREATE DATABASE playzy OWNER playzy;
--- optional hardening: no public schema rights beyond the owner
-REVOKE ALL ON DATABASE playzy FROM PUBLIC;
-```
-
-The backend creates its own tables at startup (advisory-locked, multi-replica-safe), so no
-schema setup is needed here. Connection URL (used as `PLAYZY_DATABASE_URL`):
+The `playzy` **database** and `playzy` **schema** were created on the db01 Postgres
+(`192.168.219.130:5432`, the shared instance whose other services live in the `sssup`
+database) using the existing shared DB user — no new role. The real backend migration was
+run into the schema (the exact `pgMigrate`), so all tables already exist:
 
 ```
-postgres://playzy:<password>@<db01-host>:5432/playzy?sslmode=disable
+database: playzy   schema: playzy   schema_version: 3
+tables: account, account_doc, auth_nonce, credit_grant, identity,
+        quota, reservation, schema_version
 ```
 
-Use `sslmode=require` (or `verify-full`) instead of `disable` if db01 terminates TLS — match
-whatever maji/irang use against the same instance.
+Idempotent — the backend re-runs `pgMigrate` at every startup and no-ops when up to date.
+
+**Connection URL for the manifest secret** (`PLAYZY_DATABASE_URL`) — fill the user/password
+from your `.env` (`DATABASE_USER_NAME` / `DATABASE_USER_PASSWORD`); host/port/db/schema are
+fixed:
+
+```
+postgres://<DATABASE_USER_NAME>:<DATABASE_USER_PASSWORD>@192.168.219.130:5432/playzy?sslmode=disable&search_path=playzy
+```
+
+The `search_path=playzy` is what scopes the backend to the `playzy` schema (pgx applies it on
+every pooled connection). Switch `sslmode=disable` → `require` if db01 later terminates TLS.
 
 ---
 
@@ -42,8 +47,8 @@ stringData:
   KAGI_EMAIL: ""
   KAGI_PASSWORD: ""
   PLAYZY_ADMIN_TOKEN: ""
-  # Postgres connection URL for the durable quota/account store (db01).
-  #   postgres://playzy:<password>@<db01-host>:5432/playzy?sslmode=disable
+  # Postgres connection URL for the durable quota/account store (db01, playzy schema).
+  #   postgres://<user>:<password>@192.168.219.130:5432/playzy?sslmode=disable&search_path=playzy
   PLAYZY_DATABASE_URL: ""
 ```
 
