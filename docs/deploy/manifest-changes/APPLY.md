@@ -20,8 +20,8 @@ Infisical pattern; the db01 `playzy` database + schema are already provisioned +
 
 ## Then (owner)
 
-1. **Infisical `playzy-prd` (env `prd`, path `/`)** — add: `KAGI_EMAIL`, `KAGI_PASSWORD`,
-   `PLAYZY_ADMIN_TOKEN`, and
+1. **Infisical `playzy-prd` (env `prd`, path `/`)** — add: `KAGI_SESSION` (the `kagi_session`
+   cookie value — no account email/password needed), `PLAYZY_ADMIN_TOKEN`, and
    `PLAYZY_DATABASE_URL = postgres://<user>:<pass>@192.168.219.130:5432/playzy?sslmode=disable&search_path=playzy`
    (user/pass from your `.env`).
 2. **Universal-auth bootstrap** — fill + `kubectl apply` the machine-identity clientId/secret

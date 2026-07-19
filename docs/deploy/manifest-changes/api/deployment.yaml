@@ -39,16 +39,15 @@ spec:
           ports:
             - containerPort: 8921
           env:
-            - name: KAGI_EMAIL
+            # kagi auth order is KAGI_SESSION → keyring → email+password auto-login.
+            # Providing the kagi_session cookie means the sidecar needs no account
+            # email/password. Trade-off: no auto-refresh, so when the cookie expires
+            # update KAGI_SESSION in Infisical (a stateless pod keeps no keyring).
+            - name: KAGI_SESSION
               valueFrom:
                 secretKeyRef:
                   name: playzy-secret
-                  key: KAGI_EMAIL
-            - name: KAGI_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: playzy-secret
-                  key: KAGI_PASSWORD
+                  key: KAGI_SESSION
           resources:
             requests:
               cpu: 20m
