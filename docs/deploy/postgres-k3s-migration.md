@@ -51,9 +51,9 @@ secret is no longer a SealedSecret. Apply that bundle into `marshallku/manifest`
   `Recreate` → `RollingUpdate`; image tag stays CI-managed), `README.md`
 - **DELETE** `pvc.yaml`, `secret.yaml.example` (and any committed `sealed-secret.yaml`)
 
-Put the app secrets in Infisical `playzy-prd` (env `prd`, path `/`): `KAGI_SESSION` (the
-`kagi_session` cookie — no account email/password), `PLAYZY_ADMIN_TOKEN`, and
-`PLAYZY_DATABASE_URL` (the URL from §1). See `manifest-changes/APPLY.md` for the full step list. Keep `api/service.yaml` (NodePort 30511)
+Put the app secrets in Infisical `playzy-prd` (env `prd`, path `/`): `KAGI_EMAIL`,
+`KAGI_PASSWORD`, `PLAYZY_ADMIN_TOKEN`, and `PLAYZY_DATABASE_URL` (the URL from §1). See
+`manifest-changes/APPLY.md` for the full step list. Keep `api/service.yaml` (NodePort 30511)
 as-is — the Cloudflare tunnel targets it.
 
 > ⚠️ There is **no automatic data migration** from the SQLite ledger to Postgres. At current

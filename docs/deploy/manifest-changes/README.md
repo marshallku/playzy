@@ -68,7 +68,7 @@ SealedSecret. Files committed to git: everything except `infisical-credentials.y
 
    | Key | Value |
    | --- | --- |
-   | `KAGI_SESSION` | the `kagi_session` cookie value (no account email/password needed) |
+   | `KAGI_EMAIL` / `KAGI_PASSWORD` | kagi-serve sidecar login |
    | `PLAYZY_ADMIN_TOKEN` | guards `POST /v1/credits` (leave empty to disable) |
    | `PLAYZY_DATABASE_URL` | `postgres://<user>:<pass>@192.168.219.130:5432/playzy?sslmode=disable&search_path=playzy` |
 
