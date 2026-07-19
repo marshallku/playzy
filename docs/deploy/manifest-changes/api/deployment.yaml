@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playzy-api
+  namespace: playzy
+  labels:
+    app: playzy-api
+spec:
+  replicas: 1 # safe to scale >1 now — the Postgres store is multi-replica-safe
+  # Postgres is a remote shared DB (no single-writer file), so a rolling update is fine
+  # — unlike the old SQLite-on-hostPath setup, which required Recreate.
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: playzy-api
+  template:
+    metadata:
+      labels:
+        app: playzy-api
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      # No nodeSelector: the pod no longer needs a node-local SQLite hostPath volume;
+      # it reaches Postgres on db01 over the network.
+      # Native sidecar pattern (k8s 1.29+). kagi-serve is declared as an initContainer
+      # with restartPolicy: Always so k8s starts it BEFORE the api container and keeps it
+      # running for the pod's lifetime. It hosts kagi's /chat surface on localhost:8921;
+      # the api reaches it via KAGI_SERVE_URL. kagi is a dev/personal AI backend
+      # (ADR 0001) — the provider swap is a server-side change confined to callAI.
+      initContainers:
+        - name: kagi-serve
+          image: ghcr.io/marshallku/kagi:0ca3adfdf4dd4c6116d386f82b0ebff5f3f781c8
+          restartPolicy: Always
+          args:
+            - "serve"
+            - "-addr"
+            - "0.0.0.0:8921"
+          ports:
+            - containerPort: 8921
+          env:
+            - name: KAGI_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: playzy-secret
+                  key: KAGI_EMAIL
+            - name: KAGI_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: playzy-secret
+                  key: KAGI_PASSWORD
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8921
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8921
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      containers:
+        - name: api
+          image: ghcr.io/marshallku/playzy-backend:a919451f99b114dc9f57e2ec4814da8d1489e9c8 # CI-managed tag
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PLAYZY_ADDR
+              value: ":8080"
+            # kagi-serve sidecar on localhost (see initContainers above).
+            - name: KAGI_SERVE_URL
+              value: http://127.0.0.1:8921
+            # Pin the base model so generations stay deterministic across kagi
+            # host-config changes (matches the backend's committed default).
+            - name: KAGI_MODEL
+              value: claude-5-sonnet
+            # Authoritative quota + accounts on db01 Postgres (ADR 0002). The store
+            # runs its own advisory-locked migrations at startup (multi-replica-safe).
+            # REQUIRED and fail-closed — a missing value aborts boot rather than
+            # silently using the restart-volatile in-memory store.
+            - name: PLAYZY_QUOTA_STORE
+              value: postgres
+            # postgres://<user>:<pass>@192.168.219.130:5432/playzy?sslmode=disable&search_path=playzy
+            # (the search_path scopes the backend to the playzy schema).
+            - name: PLAYZY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: playzy-secret
+                  key: PLAYZY_DATABASE_URL
+            # Guards POST /v1/credits — the verified-purchase webhook presents it.
+            # Empty/unset disables the endpoint entirely.
+            - name: PLAYZY_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: playzy-secret
+                  key: PLAYZY_ADMIN_TOKEN
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
